@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "TomyGuia",
+    "slug": "TomyGuia",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#FFE5D9"
+      },
+      "package": "com.tomyguia.app"
+    },
+    "splash": {
+      "backgroundColor": "#FFE5D9"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "39c3d85c-6fd2-4931-a85d-22292245b9f0"
+      }
+    }
+  }
+}
