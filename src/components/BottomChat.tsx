@@ -1,13 +1,13 @@
 import React, { useState, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Alert } from 'react-native';
+import { Audio } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, NEEDS_KEYWORDS, WANTS_KEYWORDS } from '../constants';
+import { OPENAI_API_KEY } from '../constants/apiConfig';
 import { IncomeAllocationModal } from './IncomeModal';
-import type { Allocation } from '../types';
+import type { Allocation, FixedExpenseSeed } from '../types';
 
-/* ─────────────────────────────────────────────────
-   NLP mejorado: parser de lenguaje natural
-   ───────────────────────────────────────────────── */
+/* ─── NLP Parser ─── */
 
 function parseAmount(msg: string): number {
   const cleaned = msg.replace(/,/g, '');
@@ -20,11 +20,13 @@ function parseAmount(msg: string): number {
   return 0;
 }
 
-function detectIntent(msg: string): 'income' | 'expense' | 'query' | 'unknown' {
+function detectIntent(msg: string): 'income' | 'expense' | 'bill' | 'query' | 'unknown' {
   const m = msg.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const incomeWords = ['recibi', 'sueldo', 'ingreso', 'cobre', 'me pagaron', 'me depositaron', 'me llego', 'gane', 'bono', 'quincena', 'nomina', 'freelance', 'venta', 'me transfirieron'];
   if (msg.startsWith('+') || incomeWords.some(w => m.includes(w))) return 'income';
-  const expenseWords = ['gaste', 'pague', 'compre', 'me costo', 'me cobro', 'pedi', 'fui a', 'comi en', 'tome un', 'uber', 'taxi', 'didi', 'cafe', 'comida', 'cena', 'almuerzo', 'desayuno'];
+  const billWords = ['pague', 'ya pague', 'abone', 'cubri', 'pagar'];
+  if (billWords.some(w => m.includes(w))) return 'bill';
+  const expenseWords = ['gaste', 'compre', 'me costo', 'me cobro', 'pedi', 'fui a', 'comi en', 'tome un', 'uber', 'taxi', 'didi', 'cafe', 'comida', 'cena', 'almuerzo', 'desayuno'];
   if (msg.startsWith('-') || expenseWords.some(w => m.includes(w))) return 'expense';
   const queryWords = ['cuanto', 'tengo', 'balance', 'saldo', 'como voy', 'resumen', 'cuanto me queda', 'cuanto llevo'];
   if (queryWords.some(w => m.includes(w))) return 'query';
@@ -47,24 +49,46 @@ function extractLabel(msg: string): string {
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
-/* ─────────────────────────────────────────────────
-   Componente BottomChat
-   ───────────────────────────────────────────────── */
+/* ─── Detectar gasto fijo por nombre ─── */
+const BILL_ALIASES: Record<string, string[]> = {
+  rent: ['renta', 'alquiler', 'arriendo'],
+  water: ['agua'],
+  light: ['luz', 'electricidad', 'electrica', 'cfe'],
+  internet: ['internet', 'wifi', 'telefono', 'celular', 'telmex', 'izzi'],
+  gas: ['gasolina', 'gas', 'tanque'],
+  transport: ['transporte', 'camion', 'autobus', 'metro'],
+  food: ['despensa', 'super', 'mandado', 'mercado', 'supermercado'],
+  subs: ['suscripcion', 'suscripciones', 'netflix', 'spotify', 'streaming'],
+};
+
+function detectBill(msg: string, fixedExpenses: FixedExpenseSeed[]): FixedExpenseSeed | null {
+  const m = msg.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  for (const exp of fixedExpenses) {
+    if (m.includes(exp.title.toLowerCase())) return exp;
+    const aliases = BILL_ALIASES[exp.id];
+    if (aliases && aliases.some(a => m.includes(a))) return exp;
+  }
+  return null;
+}
+
+/* ─── Componente ─── */
 
 interface Props {
   onIncomeAdded?: (amount: number, allocation: Allocation) => void;
   onExpenseAdded?: (amount: number, category: 'needs' | 'wants', label: string) => void;
+  onBillPaid?: (expenseId: string, title: string, amount: number) => void;
+  fixedExpenses?: FixedExpenseSeed[];
   currentNeeds: number; currentWants: number; currentSavings: number; totalBalance: number;
 }
 
 const CHIPS = [
   { label: '+ $5000 Sueldo', type: 'income' },
-  { label: '- $80 Café', type: 'expense' },
+  { label: '- $80 Cafe', type: 'expense' },
   { label: '- $150 Transporte', type: 'expense' },
   { label: '+ $100 Venta', type: 'income' },
 ];
 
-export function BottomChat({ onIncomeAdded, onExpenseAdded, currentNeeds, currentWants, currentSavings, totalBalance }: Props) {
+export function BottomChat({ onIncomeAdded, onExpenseAdded, onBillPaid, fixedExpenses = [], currentNeeds, currentWants, currentSavings, totalBalance }: Props) {
   const [text, setText] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
@@ -72,114 +96,110 @@ export function BottomChat({ onIncomeAdded, onExpenseAdded, currentNeeds, curren
   const [incomeAmount, setIncomeAmount] = useState(0);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const inputRef = useRef<TextInput>(null);
+  const recordingRef = useRef<Audio.Recording | null>(null);
 
-  const showFeedback = (msg: string) => {
-    setFeedback(msg);
-    setTimeout(() => setFeedback(null), 3000);
-  };
+  const showFeedback = (msg: string) => { setFeedback(msg); setTimeout(() => setFeedback(null), 3500); };
 
   const handleSend = () => {
     if (!text.trim()) return;
-    const msg = text.trim();
-    setText('');
-    setIsFocused(false);
-    setIsTyping(true);
+    const msg = text.trim(); setText(''); setIsFocused(false); setIsTyping(true);
 
     setTimeout(() => {
       setIsTyping(false);
       const amount = parseAmount(msg);
       const intent = detectIntent(msg);
 
-      if (amount <= 0 && intent !== 'query') {
-        showFeedback('🤔 No entendí el monto. Intenta: "Gasté $200 en super" o "Recibí $5000"');
-        return;
-      }
-
       switch (intent) {
         case 'income':
-          setIncomeAmount(amount);
-          setShowModal(true);
+          if (amount <= 0) { showFeedback('🤔 No entendi el monto. Intenta: "Recibi $5000"'); return; }
+          setIncomeAmount(amount); setShowModal(true);
           break;
+
+        case 'bill': {
+          const bill = detectBill(msg, fixedExpenses);
+          if (bill && onBillPaid) {
+            const billAmount = amount > 0 ? amount : bill.amount;
+            onBillPaid(bill.id, bill.title, billAmount);
+            showFeedback(`✅ Pagaste ${bill.title}: $${billAmount.toLocaleString('es-MX')} · Descontado de Necesidades 🩷`);
+          } else if (amount > 0 && onExpenseAdded) {
+            const label = extractLabel(msg);
+            onExpenseAdded(amount, 'needs', label);
+            showFeedback(`✅ Necesidad: ${label} · $${amount.toLocaleString('es-MX')} 🩷`);
+          } else {
+            showFeedback('🤔 No encontre ese recibo. Intenta: "Pague la luz" o "Pague $200 de agua"');
+          }
+          break;
+        }
+
         case 'expense':
+          if (amount <= 0) { showFeedback('🤔 No entendi el monto. Intenta: "Gaste $200 en super"'); return; }
           if (onExpenseAdded) {
             const cat = detectCategory(msg);
             const label = extractLabel(msg);
             onExpenseAdded(amount, cat, label);
-            const catLabel = cat === 'needs' ? '📋 Necesidad' : '🎉 Gusto';
-            showFeedback(`✅ ${catLabel}: ${label} · $${amount.toLocaleString('es-MX')}`);
+            showFeedback(`✅ ${cat === 'needs' ? 'Necesidad 🩷' : 'Gusto 💛'}: ${label} · $${amount.toLocaleString('es-MX')}`);
           }
           break;
+
         case 'query':
-          showFeedback(`💰 Balance: $${totalBalance.toLocaleString('es-MX')} · Necesidades: $${currentNeeds.toLocaleString('es-MX')}`);
+          showFeedback(`💰 Balance: $${totalBalance.toLocaleString('es-MX')}\n🩷 Necesidades: $${currentNeeds.toLocaleString('es-MX')}\n💛 Gustos: $${currentWants.toLocaleString('es-MX')}\n💚 Futuro: $${currentSavings.toLocaleString('es-MX')}`);
           break;
+
         default:
-          showFeedback('🤔 No entendí. Prueba: "Gasté $200 en super" o "Recibí 5k de sueldo"');
+          showFeedback('🤔 Prueba: "Gaste $50 en cafe", "Pague la luz", "Recibi 5k", "Cuanto tengo?"');
       }
     }, 800);
   };
 
-  const handleVoicePress = () => {
-    Alert.alert(
-      '🎙️ Comandos por voz',
-      'Para activar voz necesitas:\n\n1. Instalar expo-av\n2. Configurar Whisper API (OpenAI)\n\nPor ahora usa el teclado o los chips rápidos.',
-      [{ text: 'Entendido' }]
-    );
+  /* ─── Voz ─── */
+  const startRecording = async () => {
+    try {
+      const permission = await Audio.requestPermissionsAsync();
+      if (!permission.granted) { showFeedback('❌ Se necesita permiso de microfono'); return; }
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      recordingRef.current = recording; setIsRecording(true);
+      showFeedback('🎙️ Grabando... toca de nuevo para enviar');
+    } catch (err) { showFeedback('❌ No se pudo iniciar la grabacion'); }
+  };
+
+  const stopAndTranscribe = async () => {
+    if (!recordingRef.current) return;
+    setIsRecording(false); setIsTranscribing(true); showFeedback('⏳ Transcribiendo...');
+    try {
+      await recordingRef.current.stopAndUnloadAsync();
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+      const uri = recordingRef.current.getURI(); recordingRef.current = null;
+      if (!uri) { showFeedback('❌ No se grabo audio'); setIsTranscribing(false); return; }
+      if (!OPENAI_API_KEY || OPENAI_API_KEY === 'TU_API_KEY_AQUI') { showFeedback('⚠️ Configura tu API key en apiConfig.ts'); setIsTranscribing(false); return; }
+      const formData = new FormData();
+      formData.append('file', { uri, type: 'audio/m4a', name: 'voice.m4a' } as any);
+      formData.append('model', 'whisper-1'); formData.append('language', 'es');
+      const response = await fetch('https://api.openai.com/v1/audio/transcriptions', { method: 'POST', headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}` }, body: formData });
+      const data = await response.json();
+      if (data.text) { setText(data.text); inputRef.current?.focus(); showFeedback(`🎙️ "${data.text}"`); }
+      else { showFeedback('❌ No se pudo transcribir'); }
+    } catch (err) { showFeedback('❌ Error de conexion'); }
+    finally { setIsTranscribing(false); }
+  };
+
+  const handleVoicePress = async () => {
+    if (isTranscribing) return;
+    if (isRecording) await stopAndTranscribe(); else await startRecording();
   };
 
   return (
     <View style={s.w}>
-      <IncomeAllocationModal
-        isOpen={showModal} onClose={() => setShowModal(false)}
-        amount={incomeAmount}
-        onConfirm={(alloc) => onIncomeAdded?.(incomeAmount, alloc)}
-        currentNeeds={currentNeeds} currentWants={currentWants}
-        currentSavings={currentSavings} totalBalance={totalBalance}
-      />
-
-      {feedback && (
-        <View style={s.fb}>
-          <Text style={s.fbt}>{feedback}</Text>
-        </View>
-      )}
-
-      {isTyping && (
-        <View style={s.ty}>
-          <View style={s.ds}>
-            <View style={[s.d, { backgroundColor: COLORS.ROSA }]} />
-            <View style={[s.d, { backgroundColor: COLORS.ROSA_CLARO }]} />
-            <View style={[s.d, { backgroundColor: COLORS.MENTA }]} />
-          </View>
-          <Text style={s.tt}>Tomasa está calculando...</Text>
-        </View>
-      )}
-
-      {isFocused && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.cs} contentContainerStyle={s.cc} keyboardShouldPersistTaps="always">
-          {CHIPS.map((c, i) => (
-            <TouchableOpacity key={i} style={[s.cp, c.type === 'income' ? s.ci : s.ce]} onPress={() => { setText(c.label); inputRef.current?.focus(); }}>
-              <Text style={c.type === 'income' ? s.cit : s.cet}>{c.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      )}
-
+      <IncomeAllocationModal isOpen={showModal} onClose={() => setShowModal(false)} amount={incomeAmount} onConfirm={(alloc) => onIncomeAdded?.(incomeAmount, alloc)} currentNeeds={currentNeeds} currentWants={currentWants} currentSavings={currentSavings} totalBalance={totalBalance} />
+      {feedback && <View style={s.fb}><Text style={s.fbt}>{feedback}</Text></View>}
+      {isTyping && <View style={s.ty}><View style={s.ds}><View style={[s.d, { backgroundColor: COLORS.ROSA }]} /><View style={[s.d, { backgroundColor: COLORS.ROSA_CLARO }]} /><View style={[s.d, { backgroundColor: COLORS.MENTA }]} /></View><Text style={s.tyt}>Tomasa esta calculando...</Text></View>}
+      {isFocused && <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.cs} contentContainerStyle={s.cc} keyboardShouldPersistTaps="always">{CHIPS.map((c, i) => <TouchableOpacity key={i} style={[s.cp, c.type === 'income' ? s.ci : s.ce]} onPress={() => { setText(c.label); inputRef.current?.focus(); }}><Text style={c.type === 'income' ? s.cit : s.cet}>{c.label}</Text></TouchableOpacity>)}</ScrollView>}
       <View style={s.b}>
-        <TouchableOpacity style={s.m} onPress={handleVoicePress} activeOpacity={0.6}>
-          <View style={[s.mw, isRecording && s.mr]}>
-            <Ionicons name={isRecording ? 'mic' : 'mic-outline'} size={20} color={isRecording ? '#fff' : COLORS.ROSA} />
-          </View>
-        </TouchableOpacity>
-        <TextInput
-          ref={inputRef} style={s.i} value={text} onChangeText={setText}
-          onFocus={() => setIsFocused(true)} onBlur={() => setIsFocused(false)}
-          onSubmitEditing={handleSend}
-          placeholder="Ej. Recibí $5000..." placeholderTextColor={COLORS.MALVA + '80'}
-          returnKeyType="send"
-        />
-        <TouchableOpacity style={[s.sn, !text.trim() && { opacity: 0.3 }]} onPress={handleSend} disabled={!text.trim()}>
-          <Ionicons name="send" size={20} color={COLORS.ROSA} />
-        </TouchableOpacity>
+        <TouchableOpacity style={s.m} onPress={handleVoicePress} activeOpacity={0.6} disabled={isTranscribing}><View style={[s.mw, isRecording && s.mr, isTranscribing && s.mt]}><Ionicons name={isTranscribing ? 'hourglass-outline' : isRecording ? 'stop' : 'mic-outline'} size={20} color={isRecording || isTranscribing ? '#fff' : COLORS.ROSA} /></View></TouchableOpacity>
+        <TextInput ref={inputRef} style={s.i} value={text} onChangeText={setText} onFocus={() => setIsFocused(true)} onBlur={() => setIsFocused(false)} onSubmitEditing={handleSend} placeholder={isRecording ? '🎙️ Escuchando...' : 'Ej. Pague la luz, Gaste $50...'} placeholderTextColor={COLORS.MALVA + '80'} returnKeyType="send" editable={!isRecording} />
+        <TouchableOpacity style={[s.sn, !text.trim() && { opacity: 0.3 }]} onPress={handleSend} disabled={!text.trim()}><Ionicons name="send" size={20} color={COLORS.ROSA} /></TouchableOpacity>
       </View>
     </View>
   );
@@ -190,20 +210,16 @@ const s = StyleSheet.create({
   fb: { marginHorizontal: 16, marginBottom: 8, backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: 16, padding: 12, elevation: 3, borderWidth: 1, borderColor: '#FFCAD460' },
   fbt: { fontSize: 13, fontWeight: '600', color: '#9D8189', lineHeight: 18 },
   ty: { marginHorizontal: 16, marginBottom: 8, backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 16, padding: 12, gap: 8, elevation: 3 },
-  ds: { flexDirection: 'row', gap: 6 },
-  d: { width: 8, height: 8, borderRadius: 4 },
-  tt: { fontSize: 12, fontWeight: '600', color: '#9D8189' },
-  cs: { maxHeight: 44 },
-  cc: { paddingHorizontal: 16, gap: 8, paddingBottom: 8, alignItems: 'center' },
+  ds: { flexDirection: 'row', gap: 6 }, d: { width: 8, height: 8, borderRadius: 4 },
+  tyt: { fontSize: 12, fontWeight: '600', color: '#9D8189' },
+  cs: { maxHeight: 44 }, cc: { paddingHorizontal: 16, gap: 8, paddingBottom: 8, alignItems: 'center' },
   cp: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 99, borderWidth: 1 },
-  ci: { backgroundColor: '#FFCAD444', borderColor: '#FFCAD4' },
-  ce: { backgroundColor: 'rgba(255,255,255,0.6)', borderColor: '#fff' },
-  cit: { fontSize: 12, fontWeight: '700', color: '#F4ACB7' },
-  cet: { fontSize: 12, fontWeight: '700', color: '#9D8189' },
+  ci: { backgroundColor: '#FFCAD444', borderColor: '#FFCAD4' }, ce: { backgroundColor: 'rgba(255,255,255,0.6)', borderColor: '#fff' },
+  cit: { fontSize: 12, fontWeight: '700', color: '#F4ACB7' }, cet: { fontSize: 12, fontWeight: '700', color: '#9D8189' },
   b: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.7)', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.8)', paddingHorizontal: 16, paddingVertical: 12, gap: 12 },
   m: { padding: 4 },
   mw: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFCAD430' },
-  mr: { backgroundColor: '#F4ACB7' },
+  mr: { backgroundColor: '#F4ACB7' }, mt: { backgroundColor: '#9D8189' },
   i: { flex: 1, fontSize: 14, fontWeight: '500', color: '#9D8189', backgroundColor: '#fff', borderRadius: 99, paddingHorizontal: 16, paddingVertical: 10, elevation: 2 },
   sn: { padding: 4 },
 });
