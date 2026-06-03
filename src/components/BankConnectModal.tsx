@@ -1,57 +1,245 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, ActivityIndicator } from 'react-native';
+import {
+  View, Text, StyleSheet, TouchableOpacity,
+  Modal, ActivityIndicator
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { ConnectedBank, BankTransaction } from '../types';
-const BANKS=[{id:'bbva',name:'BBVA',color:'#004481',emoji:'💙'},{id:'banamex',name:'Citibanamex',color:'#E60012',emoji:'❤️'},{id:'santander',name:'Santander',color:'#EC0000',emoji:'🟥'},{id:'banorte',name:'Banorte',color:'#EB0029',emoji:'🟢'},{id:'nu',name:'Nu',color:'#820AD1',emoji:'💜'}];
-const TXS=[{amount:1240,category:'needs' as const,label:'Supermercado Soriana',source:'card' as const},{amount:380,category:'needs' as const,label:'Gasolinera Pemex',source:'card' as const},{amount:250,category:'wants' as const,label:'Starbucks',source:'card' as const},{amount:480,category:'wants' as const,label:'Cinépolis VIP',source:'card' as const},{amount:199,category:'wants' as const,label:'Spotify Premium',source:'card' as const}];
-interface Props{isOpen:boolean;onClose:()=>void;onConnected:(bank:ConnectedBank,txs:BankTransaction[])=>void;}
-export function BankConnectModal({isOpen,onClose,onConnected}:Props){
-  const [sel,setSel]=useState<typeof BANKS[0]|null>(null);
-  const [step,setStep]=useState<'select'|'confirm'|'loading'|'done'>('select');
-  const connect=()=>{
-    if(!sel)return;setStep('loading');
-    setTimeout(()=>{
-      const bank:ConnectedBank={id:sel.id,name:sel.name,color:sel.color,last4:'4242',connectedAt:Date.now()};
-      const txs:BankTransaction[]=TXS.map((t,i)=>({...t,id:i+1}));
-      setStep('done');setTimeout(()=>{onConnected(bank,txs);onClose();setStep('select');setSel(null);},1500);
-    },2500);
+import { BelvoWidget } from './BelvoWidget';
+import { getBelvoAccounts, getBelvoTransactions, mapBelvoToExpenses } from '../services/belvoService';
+
+interface Props {
+  isOpen: boolean;
+  onClose: () => void;
+  onConnected: (bank: ConnectedBank, txs: BankTransaction[]) => void;
+}
+
+type Step = 'intro' | 'widget' | 'loading' | 'done' | 'error';
+
+export function BankConnectModal({ isOpen, onClose, onConnected }: Props) {
+  const [step, setStep] = useState<Step>('intro');
+  const [errorMsg, setErrorMsg] = useState('');
+
+  const handleReset = () => {
+    setStep('intro');
+    setErrorMsg('');
   };
-  return(
-    <Modal visible={isOpen} transparent animationType="slide" onRequestClose={onClose}>
-      <TouchableOpacity style={s.ov} activeOpacity={1} onPress={onClose}/>
-      <View style={s.sh}>
-        <View style={s.hd}/>
-        {step==='select'&&<>
-          <Text style={s.ti}>Conecta tu banco 🏦</Text>
-          <Text style={s.su}>Tus movimientos se categorizan con 50/30/20</Text>
-          <ScrollView style={{maxHeight:300}}>
-            {BANKS.map(b=><TouchableOpacity key={b.id} style={[s.bb,sel?.id===b.id&&s.bbs]} onPress={()=>setSel(b)}>
-              <Text style={s.be}>{b.emoji}</Text><Text style={[s.bn,sel?.id===b.id&&{color:'#fff'}]}>{b.name}</Text>
-              {sel?.id===b.id&&<Ionicons name="checkmark-circle" size={20} color="#fff"/>}
-            </TouchableOpacity>)}
-          </ScrollView>
-          <TouchableOpacity style={[s.cb,!sel&&s.cd]} disabled={!sel} onPress={()=>setStep('confirm')}><Text style={s.ct}>Continuar</Text><Ionicons name="arrow-forward" size={18} color="#fff"/></TouchableOpacity>
-        </>}
-        {step==='confirm'&&sel&&<>
-          <Text style={s.ti}>Confirmar conexión</Text>
-          <View style={s.bp}><Text style={s.be}>{BANKS.find(b=>b.id===sel.id)?.emoji}</Text><Text style={[s.bn,{color:sel.color,fontSize:18}]}>{sel.name}</Text></View>
-          <Text style={s.cd2}>Importaremos tus últimos movimientos y los categorizaremos automáticamente.</Text>
-          <TouchableOpacity style={s.cb} onPress={connect}><Ionicons name="shield-checkmark-outline" size={18} color="#fff"/><Text style={s.ct}>Conectar</Text></TouchableOpacity>
-          <TouchableOpacity style={s.bk} onPress={()=>setStep('select')}><Text style={s.bkt}>Cambiar banco</Text></TouchableOpacity>
-        </>}
-        {step==='loading'&&<View style={s.lc}><ActivityIndicator size="large" color="#F4ACB7"/><Text style={s.lt}>Conectando con {sel?.name}...</Text></View>}
-        {step==='done'&&<View style={s.lc}><View style={s.dc}><Ionicons name="checkmark" size={36} color="#fff"/></View><Text style={s.lt}>¡Cuenta conectada!</Text></View>}
-      </View>
+
+  const handleClose = () => {
+    handleReset();
+    onClose();
+  };
+
+  // Belvo conectó exitosamente — traemos cuentas y transacciones
+  const handleBelvoSuccess = async (linkId: string, institution: string) => {
+    setStep('loading');
+    try {
+      const [accounts, transactions] = await Promise.all([
+        getBelvoAccounts(linkId),
+        getBelvoTransactions(linkId),
+      ]);
+
+      const account = accounts?.[0];
+      const bank: ConnectedBank = {
+        id: linkId,
+        name: institution || account?.institution?.name || 'Banco conectado',
+        color: '#F4ACB7',
+        last4: account?.number?.slice(-4) || '****',
+        connectedAt: Date.now(),
+      };
+
+      const mapped = mapBelvoToExpenses(transactions);
+      const txs: BankTransaction[] = mapped.map((t, i) => ({
+        id: i + 1,
+        amount: t.amount,
+        category: t.category,
+        label: t.label,
+        source: 'card' as const,
+      }));
+
+      setStep('done');
+      setTimeout(() => {
+        onConnected(bank, txs);
+        handleClose();
+      }, 1500);
+
+    } catch (err) {
+      setErrorMsg('No pudimos obtener tus movimientos. Intenta de nuevo.');
+      setStep('error');
+    }
+  };
+
+  const handleBelvoError = (error: string) => {
+    setErrorMsg(error);
+    setStep('error');
+  };
+
+  return (
+    <Modal visible={isOpen} transparent animationType="slide" onRequestClose={handleClose}>
+
+      {/* Widget de Belvo — pantalla completa */}
+      {step === 'widget' && (
+        <BelvoWidget
+          onSuccess={handleBelvoSuccess}
+          onError={handleBelvoError}
+          onClose={handleClose}
+        />
+      )}
+
+      {/* Pantallas del modal (intro, loading, done, error) */}
+      {step !== 'widget' && (
+        <>
+          <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={handleClose} />
+          <View style={s.sheet}>
+            <View style={s.handle} />
+
+            {/* INTRO */}
+            {step === 'intro' && (
+              <>
+                <Text style={s.title}>Conecta tu banco 🏦</Text>
+                <Text style={s.subtitle}>
+                  Importamos tus movimientos automáticamente y los clasificamos en tu presupuesto 50/30/20
+                </Text>
+
+                <View style={s.featureList}>
+                  <FeatureRow icon="shield-checkmark-outline" text="Conexión segura con cifrado bancario" />
+                  <FeatureRow icon="repeat-outline" text="Sincronización automática del mes actual" />
+                  <FeatureRow icon="albums-outline" text="Clasificación automática de gastos" />
+                  <FeatureRow icon="eye-off-outline" text="Nunca vemos tus credenciales" />
+                </View>
+
+                <View style={s.banks}>
+                  <Text style={s.banksLabel}>Bancos disponibles</Text>
+                  <Text style={s.banksList}>BBVA · Banorte · Santander · HSBC · Banamex · Nu</Text>
+                </View>
+
+                <TouchableOpacity style={s.btnPrimary} onPress={() => setStep('widget')}>
+                  <Ionicons name="link-outline" size={18} color="#fff" />
+                  <Text style={s.btnTxt}>Conectar mi banco</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={s.btnSecondary} onPress={handleClose}>
+                  <Text style={s.btnSecTxt}>Ahora no</Text>
+                </TouchableOpacity>
+              </>
+            )}
+
+            {/* LOADING */}
+            {step === 'loading' && (
+              <View style={s.center}>
+                <ActivityIndicator size="large" color="#F4ACB7" />
+                <Text style={s.loadingTxt}>Importando tus movimientos...</Text>
+                <Text style={s.loadingSub}>Esto puede tardar unos segundos</Text>
+              </View>
+            )}
+
+            {/* DONE */}
+            {step === 'done' && (
+              <View style={s.center}>
+                <View style={s.doneCircle}>
+                  <Ionicons name="checkmark" size={40} color="#fff" />
+                </View>
+                <Text style={s.loadingTxt}>¡Banco conectado!</Text>
+                <Text style={s.loadingSub}>Tus movimientos ya están en tu presupuesto</Text>
+              </View>
+            )}
+
+            {/* ERROR */}
+            {step === 'error' && (
+              <View style={s.center}>
+                <View style={s.errorCircle}>
+                  <Ionicons name="close" size={40} color="#fff" />
+                </View>
+                <Text style={s.loadingTxt}>Algo salió mal</Text>
+                <Text style={s.loadingSub}>{errorMsg}</Text>
+                <TouchableOpacity style={[s.btnPrimary, { marginTop: 20 }]} onPress={handleReset}>
+                  <Text style={s.btnTxt}>Intentar de nuevo</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </>
+      )}
     </Modal>
   );
 }
-const s=StyleSheet.create({
-  ov:{...StyleSheet.absoluteFillObject,backgroundColor:'rgba(0,0,0,0.4)'},sh:{position:'absolute',bottom:0,left:0,right:0,backgroundColor:'rgba(255,255,255,0.98)',borderTopLeftRadius:32,borderTopRightRadius:32,padding:24,paddingBottom:40,elevation:20},
-  hd:{width:48,height:5,backgroundColor:'#D8E2DC',borderRadius:99,alignSelf:'center',marginBottom:16},ti:{fontSize:22,fontWeight:'800',color:'#F4ACB7',textAlign:'center',marginBottom:4},su:{fontSize:13,color:'#9D8189',textAlign:'center',opacity:0.7,marginBottom:16},
-  bb:{flexDirection:'row',alignItems:'center',gap:12,padding:14,borderRadius:16,backgroundColor:'rgba(255,255,255,0.7)',marginBottom:8,borderWidth:2,borderColor:'transparent'},bbs:{backgroundColor:'#F4ACB7',borderColor:'#F4ACB7'},
-  be:{fontSize:24},bn:{flex:1,fontSize:15,fontWeight:'700',color:'#9D8189'},
-  cb:{backgroundColor:'#F4ACB7',borderRadius:16,paddingVertical:16,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:8,marginTop:12,elevation:6},cd:{backgroundColor:'#FFE5D9',elevation:0},ct:{color:'#fff',fontWeight:'700',fontSize:16},
-  bp:{alignItems:'center',gap:8,padding:24},cd2:{fontSize:13,color:'#9D8189',textAlign:'center',lineHeight:20,marginBottom:16},
-  bk:{alignItems:'center',paddingVertical:12},bkt:{fontSize:13,fontWeight:'600',color:'#9D8189'},
-  lc:{alignItems:'center',justifyContent:'center',paddingVertical:40,gap:16},lt:{fontSize:18,fontWeight:'800',color:'#F4ACB7'},dc:{width:72,height:72,borderRadius:36,backgroundColor:'#85A89E',alignItems:'center',justifyContent:'center'},
+
+function FeatureRow({ icon, text }: { icon: any; text: string }) {
+  return (
+    <View style={s.featureRow}>
+      <Ionicons name={icon} size={20} color="#F4ACB7" />
+      <Text style={s.featureTxt}>{text}</Text>
+    </View>
+  );
+}
+
+const s = StyleSheet.create({
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  sheet: {
+    position: 'absolute',
+    bottom: 0, left: 0, right: 0,
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    padding: 24,
+    paddingBottom: 40,
+    elevation: 20,
+  },
+  handle: {
+    width: 48, height: 5,
+    backgroundColor: '#D8E2DC',
+    borderRadius: 99,
+    alignSelf: 'center',
+    marginBottom: 20,
+  },
+  title: {
+    fontSize: 22, fontWeight: '800',
+    color: '#F4ACB7', textAlign: 'center',
+    marginBottom: 6,
+  },
+  subtitle: {
+    fontSize: 13, color: '#9D8189',
+    textAlign: 'center', lineHeight: 20,
+    marginBottom: 20, opacity: 0.8,
+  },
+  featureList: { marginBottom: 20, gap: 12 },
+  featureRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  featureTxt: { fontSize: 14, color: '#6D5A62', flex: 1 },
+  banks: {
+    backgroundColor: '#FFF5F7',
+    borderRadius: 12, padding: 12,
+    marginBottom: 20, alignItems: 'center',
+  },
+  banksLabel: { fontSize: 11, color: '#9D8189', marginBottom: 4 },
+  banksList: { fontSize: 13, fontWeight: '600', color: '#6D5A62' },
+  btnPrimary: {
+    backgroundColor: '#F4ACB7',
+    borderRadius: 16, paddingVertical: 16,
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'center', gap: 8,
+    elevation: 4,
+  },
+  btnTxt: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  btnSecondary: { alignItems: 'center', paddingVertical: 14 },
+  btnSecTxt: { fontSize: 14, color: '#9D8189', fontWeight: '600' },
+  center: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40, gap: 10,
+  },
+  loadingTxt: { fontSize: 18, fontWeight: '800', color: '#F4ACB7' },
+  loadingSub: { fontSize: 13, color: '#9D8189', textAlign: 'center' },
+  doneCircle: {
+    width: 80, height: 80, borderRadius: 40,
+    backgroundColor: '#85A89E',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  errorCircle: {
+    width: 80, height: 80, borderRadius: 40,
+    backgroundColor: '#FF6B6B',
+    alignItems: 'center', justifyContent: 'center',
+  },
 });

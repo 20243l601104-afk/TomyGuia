@@ -3,20 +3,68 @@ import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Alert 
 import { Audio } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, NEEDS_KEYWORDS, WANTS_KEYWORDS } from '../constants';
-import { OPENAI_API_KEY } from '../constants/apiConfig';
+import { STT_API_KEY, STT_URL } from '../constants/apiConfig';
 import { IncomeAllocationModal } from './IncomeModal';
 import type { Allocation, FixedExpenseSeed } from '../types';
 
-/* ─── NLP Parser ─── */
+/* ─── Diccionario de números en letras ─── */
+const NUMEROS: Record<string, number> = {
+  cero: 0, uno: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9,
+  diez: 10, once: 11, doce: 12, trece: 13, catorce: 14, quince: 15,
+  dieciseis: 16, diecisiete: 17, dieciocho: 18, diecinueve: 19,
+  veinte: 20, veintiuno: 21, veintidos: 22, veintitres: 23, veinticuatro: 24, veinticinco: 25,
+  veintisei: 26, veintisiete: 27, veintiocho: 28, veintinueve: 29,
+  treinta: 30, cuarenta: 40, cincuenta: 50, sesenta: 60, setenta: 70, ochenta: 80, noventa: 90,
+  cien: 100, cientos: 100,
+  ciento: 100, cienun: 101, cientoun: 101,
+  doscientos: 200, trescientos: 300, cuatrocientos: 400, quinientos: 500,
+  seiscientos: 600, setecientos: 700, ochocientos: 800, novecientos: 900,
+  mil: 1000, millon: 1000000,
+};
+
+function parseWrittenNumber(text: string): number {
+  const m = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+  
+  if (NUMEROS[m]) return NUMEROS[m];
+  
+  let total = 0;
+  const palabras = m.split(/[\s\-y]+/);
+  
+  for (const palabra of palabras) {
+    const limpia = palabra.trim();
+    if (limpia && NUMEROS[limpia] !== undefined) {
+      const num = NUMEROS[limpia];
+      if (num >= 1000) {
+        total *= num;
+      } else {
+        total += num;
+      }
+    }
+  }
+  
+  return total;
+}
 
 function parseAmount(msg: string): number {
   const cleaned = msg.replace(/,/g, '');
+  
+  // Busca números normales primero
   const kMatch = cleaned.match(/(\d+(?:\.\d+)?)\s*[kK]/);
   if (kMatch) return parseFloat(kMatch[1]) * 1000;
+  
   const milMatch = cleaned.match(/(\d+(?:\.\d+)?)\s*mil/i);
   if (milMatch) return parseFloat(milMatch[1]) * 1000;
+  
   const nums = cleaned.match(/\d+(?:\.\d+)?/g);
   if (nums && nums.length > 0) return Math.max(...nums.map(n => parseFloat(n)));
+  
+  // Busca palabras numéricas
+  const palabrasMatch = msg.match(/\b(cero|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|dieciseis|diecisiete|dieciocho|diecinueve|veintiuno|veintidos|veintitres|veinticuatro|veinticinco|veintiseis|veintisiete|veintiocho|veintinueve|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa|cien|ciento|cientos|doscientos|trescientos|cuatrocientos|quinientos|seiscientos|setecientos|ochocientos|novecientos|mil|millon)\b/gi);
+  
+  if (palabrasMatch && palabrasMatch.length > 0) {
+    return parseWrittenNumber(palabrasMatch.join(' '));
+  }
+  
   return 0;
 }
 
@@ -38,18 +86,15 @@ function detectCategory(msg: string): 'needs' | 'wants' {
   const m = msg.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const needs = [...NEEDS_KEYWORDS, 'doctor', 'medicina', 'hospital', 'dentista', 'escuela', 'universidad', 'seguro', 'celular', 'telefono', 'mandado', 'leche', 'pan', 'huevo', 'tortilla', 'pollo', 'carne', 'verdura', 'fruta'];
   if (needs.some(k => m.includes(k))) return 'needs';
-  const wants = [...WANTS_KEYWORDS, 'antojo', 'capricho', 'salida', 'vacaciones', 'viaje', 'juego', 'videojuego', 'zapatos', 'maquillaje', 'starbucks', 'oxxo', 'cerveza', 'vino', 'fiesta', 'concierto'];
-  if (wants.some(k => m.includes(k))) return 'wants';
   return 'wants';
 }
 
 function extractLabel(msg: string): string {
-  let label = msg.replace(/^[+\-]\s*/, '').replace(/\$?\d+[\d,.kK]*(mil)?/g, '').trim();
+  let label = msg.replace(/^[+\-]\s*/, '').replace(/\$?\d+[\d,.kK]*(mil)?/g, '').replace(/\b(cero|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|dieciseis|diecisiete|dieciocho|diecinueve|veintiuno|veintidos|veintitres|veinticuatro|veinticinco|veintiseis|veintisiete|veintiocho|veintinueve|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa|cien|ciento|cientos|doscientos|trescientos|cuatrocientos|quinientos|seiscientos|setecientos|ochocientos|novecientos|mil|millon)\b/gi, '').trim();
   if (label.length < 2) label = msg;
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
-/* ─── Detectar gasto fijo por nombre ─── */
 const BILL_ALIASES: Record<string, string[]> = {
   rent: ['renta', 'alquiler', 'arriendo'],
   water: ['agua'],
@@ -70,8 +115,6 @@ function detectBill(msg: string, fixedExpenses: FixedExpenseSeed[]): FixedExpens
   }
   return null;
 }
-
-/* ─── Componente ─── */
 
 interface Props {
   onIncomeAdded?: (amount: number, allocation: Allocation) => void;
@@ -105,7 +148,6 @@ export function BottomChat({ onIncomeAdded, onExpenseAdded, onBillPaid, fixedExp
   const handleSend = () => {
     if (!text.trim()) return;
     const msg = text.trim(); setText(''); setIsFocused(false); setIsTyping(true);
-
     setTimeout(() => {
       setIsTyping(false);
       const amount = parseAmount(msg);
@@ -113,75 +155,74 @@ export function BottomChat({ onIncomeAdded, onExpenseAdded, onBillPaid, fixedExp
 
       switch (intent) {
         case 'income':
-          if (amount <= 0) { showFeedback('🤔 No entendi el monto. Intenta: "Recibi $5000"'); return; }
+          if (amount <= 0) { showFeedback('🤔 No entendi el monto'); return; }
           setIncomeAmount(amount); setShowModal(true);
           break;
-
         case 'bill': {
           const bill = detectBill(msg, fixedExpenses);
           if (bill && onBillPaid) {
             const billAmount = amount > 0 ? amount : bill.amount;
             onBillPaid(bill.id, bill.title, billAmount);
-            showFeedback(`✅ Pagaste ${bill.title}: $${billAmount.toLocaleString('es-MX')} · Descontado de Necesidades 🩷`);
+            showFeedback(`✅ Pagaste ${bill.title}: $${billAmount.toLocaleString('es-MX')}`);
           } else if (amount > 0 && onExpenseAdded) {
-            const label = extractLabel(msg);
-            onExpenseAdded(amount, 'needs', label);
-            showFeedback(`✅ Necesidad: ${label} · $${amount.toLocaleString('es-MX')} 🩷`);
+            onExpenseAdded(amount, 'needs', extractLabel(msg));
+            showFeedback(`✅ Necesidad: $${amount.toLocaleString('es-MX')}`);
           } else {
-            showFeedback('🤔 No encontre ese recibo. Intenta: "Pague la luz" o "Pague $200 de agua"');
+            showFeedback('🤔 No encontre ese recibo');
           }
           break;
         }
-
         case 'expense':
-          if (amount <= 0) { showFeedback('🤔 No entendi el monto. Intenta: "Gaste $200 en super"'); return; }
+          if (amount <= 0) { showFeedback('🤔 No entendi el monto'); return; }
           if (onExpenseAdded) {
             const cat = detectCategory(msg);
-            const label = extractLabel(msg);
-            onExpenseAdded(amount, cat, label);
-            showFeedback(`✅ ${cat === 'needs' ? 'Necesidad 🩷' : 'Gusto 💛'}: ${label} · $${amount.toLocaleString('es-MX')}`);
+            onExpenseAdded(amount, cat, extractLabel(msg));
+            showFeedback(`✅ ${cat === 'needs' ? 'Necesidad' : 'Gusto'}: $${amount.toLocaleString('es-MX')}`);
           }
           break;
-
         case 'query':
-          showFeedback(`💰 Balance: $${totalBalance.toLocaleString('es-MX')}\n🩷 Necesidades: $${currentNeeds.toLocaleString('es-MX')}\n💛 Gustos: $${currentWants.toLocaleString('es-MX')}\n💚 Futuro: $${currentSavings.toLocaleString('es-MX')}`);
+          showFeedback(`💰 Balance: $${totalBalance.toLocaleString('es-MX')}`);
           break;
-
         default:
-          showFeedback('🤔 Prueba: "Gaste $50 en cafe", "Pague la luz", "Recibi 5k", "Cuanto tengo?"');
+          showFeedback('🤔 Prueba: "Gaste quinientos en cafe"');
       }
     }, 800);
   };
 
-  /* ─── Voz ─── */
   const startRecording = async () => {
     try {
       const permission = await Audio.requestPermissionsAsync();
-      if (!permission.granted) { showFeedback('❌ Se necesita permiso de microfono'); return; }
+      if (!permission.granted) { showFeedback('❌ Se necesita permiso'); return; }
       await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
       const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
       recordingRef.current = recording; setIsRecording(true);
-      showFeedback('🎙️ Grabando... toca de nuevo para enviar');
-    } catch (err) { showFeedback('❌ No se pudo iniciar la grabacion'); }
+      showFeedback('🎙️ Grabando...');
+    } catch (err) { showFeedback('❌ Error'); }
   };
 
   const stopAndTranscribe = async () => {
     if (!recordingRef.current) return;
-    setIsRecording(false); setIsTranscribing(true); showFeedback('⏳ Transcribiendo...');
+    setIsRecording(false); setIsTranscribing(true);
     try {
       await recordingRef.current.stopAndUnloadAsync();
       await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
       const uri = recordingRef.current.getURI(); recordingRef.current = null;
-      if (!uri) { showFeedback('❌ No se grabo audio'); setIsTranscribing(false); return; }
-      if (!OPENAI_API_KEY || OPENAI_API_KEY === 'TU_API_KEY_AQUI') { showFeedback('⚠️ Configura tu API key en apiConfig.ts'); setIsTranscribing(false); return; }
-      const formData = new FormData();
-      formData.append('file', { uri, type: 'audio/m4a', name: 'voice.m4a' } as any);
-      formData.append('model', 'whisper-1'); formData.append('language', 'es');
-      const response = await fetch('https://api.openai.com/v1/audio/transcriptions', { method: 'POST', headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}` }, body: formData });
+      if (!uri) { showFeedback('❌ Sin audio'); setIsTranscribing(false); return; }
+      if (!STT_API_KEY || STT_API_KEY === 'TU_KEY_DE_DEEPGRAM_AQUI') {
+        showFeedback('⚠️ Configura Deepgram'); setIsTranscribing(false); return;
+      }
+      const audioResponse = await fetch(uri);
+      const audioBlob = await audioResponse.blob();
+      const response = await fetch(STT_URL, {
+        method: 'POST',
+        headers: { 'Authorization': `Token ${STT_API_KEY}`, 'Content-Type': 'audio/wav' },
+        body: audioBlob,
+      });
       const data = await response.json();
-      if (data.text) { setText(data.text); inputRef.current?.focus(); showFeedback(`🎙️ "${data.text}"`); }
+      const transcript = data?.results?.channels?.[0]?.alternatives?.[0]?.transcript || '';
+      if (transcript) { setText(transcript); inputRef.current?.focus(); showFeedback(`🎙️ "${transcript}"`); }
       else { showFeedback('❌ No se pudo transcribir'); }
-    } catch (err) { showFeedback('❌ Error de conexion'); }
+    } catch (err) { showFeedback('❌ Error'); }
     finally { setIsTranscribing(false); }
   };
 
@@ -194,11 +235,11 @@ export function BottomChat({ onIncomeAdded, onExpenseAdded, onBillPaid, fixedExp
     <View style={s.w}>
       <IncomeAllocationModal isOpen={showModal} onClose={() => setShowModal(false)} amount={incomeAmount} onConfirm={(alloc) => onIncomeAdded?.(incomeAmount, alloc)} currentNeeds={currentNeeds} currentWants={currentWants} currentSavings={currentSavings} totalBalance={totalBalance} />
       {feedback && <View style={s.fb}><Text style={s.fbt}>{feedback}</Text></View>}
-      {isTyping && <View style={s.ty}><View style={s.ds}><View style={[s.d, { backgroundColor: COLORS.ROSA }]} /><View style={[s.d, { backgroundColor: COLORS.ROSA_CLARO }]} /><View style={[s.d, { backgroundColor: COLORS.MENTA }]} /></View><Text style={s.tyt}>Tomasa esta calculando...</Text></View>}
+      {isTyping && <View style={s.ty}><View style={s.ds}><View style={[s.d, { backgroundColor: COLORS.ROSA }]} /><View style={[s.d, { backgroundColor: COLORS.ROSA_CLARO }]} /><View style={[s.d, { backgroundColor: COLORS.MENTA }]} /></View><Text style={s.tyt}>Tomasa calculando...</Text></View>}
       {isFocused && <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.cs} contentContainerStyle={s.cc} keyboardShouldPersistTaps="always">{CHIPS.map((c, i) => <TouchableOpacity key={i} style={[s.cp, c.type === 'income' ? s.ci : s.ce]} onPress={() => { setText(c.label); inputRef.current?.focus(); }}><Text style={c.type === 'income' ? s.cit : s.cet}>{c.label}</Text></TouchableOpacity>)}</ScrollView>}
       <View style={s.b}>
         <TouchableOpacity style={s.m} onPress={handleVoicePress} activeOpacity={0.6} disabled={isTranscribing}><View style={[s.mw, isRecording && s.mr, isTranscribing && s.mt]}><Ionicons name={isTranscribing ? 'hourglass-outline' : isRecording ? 'stop' : 'mic-outline'} size={20} color={isRecording || isTranscribing ? '#fff' : COLORS.ROSA} /></View></TouchableOpacity>
-        <TextInput ref={inputRef} style={s.i} value={text} onChangeText={setText} onFocus={() => setIsFocused(true)} onBlur={() => setIsFocused(false)} onSubmitEditing={handleSend} placeholder={isRecording ? '🎙️ Escuchando...' : 'Ej. Pague la luz, Gaste $50...'} placeholderTextColor={COLORS.MALVA + '80'} returnKeyType="send" editable={!isRecording} />
+        <TextInput ref={inputRef} style={s.i} value={text} onChangeText={setText} onFocus={() => setIsFocused(true)} onBlur={() => setIsFocused(false)} onSubmitEditing={handleSend} placeholder={isRecording ? '🎙️ Escuchando...' : 'Ej. Gaste quinientos...'} placeholderTextColor={COLORS.MALVA + '80'} returnKeyType="send" editable={!isRecording} />
         <TouchableOpacity style={[s.sn, !text.trim() && { opacity: 0.3 }]} onPress={handleSend} disabled={!text.trim()}><Ionicons name="send" size={20} color={COLORS.ROSA} /></TouchableOpacity>
       </View>
     </View>

@@ -6,6 +6,7 @@ import { CalendarWidget } from '../components/CalendarWidget';
 import { BottomChat } from '../components/BottomChat';
 import { BankConnectModal } from '../components/BankConnectModal';
 import { TomasaSVG } from '../components/TomasaSVG';
+import { FloatingAssistant } from '../components/FloatingAssistant';
 import type { FixedExpenseSeed, FixedExpense, Expense, ConnectedBank, BankTransaction, UserProfile } from '../types';
 
 interface Props {
@@ -244,7 +245,18 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
       </ScrollView>
 
       <View style={s.cbr}><BottomChat onIncomeAdded={onIA} onExpenseAdded={onEA} onBillPaid={onBillPaid} fixedExpenses={seedExpenses} currentNeeds={needsBudget} currentWants={wantsBudget} currentSavings={ef} totalBalance={totalBal} /></View>
-      <BankConnectModal isOpen={bmo} onClose={() => setBmo(false)} onConnected={onBC} />
+<FloatingAssistant
+        wantsBudget={wantsBudget}
+        wantsSpent={exps.filter(e => e.category === 'wants').reduce((a, e) => a + e.amount, 0)}
+        needsBudget={needsBudget}
+        emergencyFundGoal={emergencyFundGoal}
+        emergencyFund={ef}
+        fixedExpenses={fel}
+        paidBills={paidBills}
+        recentActivityCount={exps.filter(e => Date.now() - e.id < 2 * 60 * 60 * 1000).length}
+        expenses={exps}
+      />     
+ <BankConnectModal isOpen={bmo} onClose={() => setBmo(false)} onConnected={onBC} />
     </View>
   );
 }
