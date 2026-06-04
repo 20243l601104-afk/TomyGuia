@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, KeyboardAvoidingView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CalendarWidget } from '../components/CalendarWidget';
@@ -124,7 +124,7 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
   };
 
   return (
-    <View style={[s.con, { paddingTop: ins.top }]}>
+    <KeyboardAvoidingView style={[s.con, { paddingTop: ins.top }]} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
       <View style={[s.bl, s.b1]} /><View style={[s.bl, s.b2]} />
 
       {/* Header */}
@@ -140,7 +140,7 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={s.sc} contentContainerStyle={{ paddingBottom: 140 }} showsVerticalScrollIndicator={false}>
+      <ScrollView style={s.sc} contentContainerStyle={{ paddingBottom: 20 }} showsVerticalScrollIndicator={false}>
 
         {/* ═══ 1. NECESIDADES (Rosa #F4ACB7) — 50% ═══ */}
         <View style={s.cardNec}>
@@ -244,7 +244,9 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
         </View>
       </ScrollView>
 
-      <View style={s.cbr}><BottomChat onIncomeAdded={onIA} onExpenseAdded={onEA} onBillPaid={onBillPaid} fixedExpenses={seedExpenses} currentNeeds={needsBudget} currentWants={wantsBudget} currentSavings={ef} totalBalance={totalBal} /></View>
+      <View style={s.cbr}>
+        <BottomChat onIncomeAdded={onIA} onExpenseAdded={onEA} onBillPaid={onBillPaid} fixedExpenses={seedExpenses} currentNeeds={needsBudget} currentWants={wantsBudget} currentSavings={ef} totalBalance={totalBal} />
+      </View>
 <FloatingAssistant
         wantsBudget={wantsBudget}
         wantsSpent={exps.filter(e => e.category === 'wants').reduce((a, e) => a + e.amount, 0)}
@@ -254,10 +256,9 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
         fixedExpenses={fel}
         paidBills={paidBills}
         recentActivityCount={exps.filter(e => Date.now() - e.id < 2 * 60 * 60 * 1000).length}
-        expenses={exps}
       />     
  <BankConnectModal isOpen={bmo} onClose={() => setBmo(false)} onConnected={onBC} />
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -326,5 +327,5 @@ const s = StyleSheet.create({
   sumLabel: { fontSize: 10, fontWeight: '700', color: '#9D8189', opacity: 0.7 },
   sumVal: { fontSize: 12, fontWeight: '800' },
   sumTotal: { fontSize: 11, fontWeight: '700', color: '#9D8189', opacity: 0.6, textAlign: 'center' },
-  cbr: { position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 40 },
+  cbr: { zIndex: 40, backgroundColor: 'transparent' },
 });

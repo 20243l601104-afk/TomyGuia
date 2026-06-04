@@ -39,7 +39,9 @@
           "cameraPermission": "TomyGuia necesita acceso a tu cámara para tu foto de perfil."
         }
       ],
-      "expo-audio"
-    ]
+      "expo-audio",
+      "expo-web-browser"
+    ],
+    "scheme": "com.tomyguia.app"
   }
 }
