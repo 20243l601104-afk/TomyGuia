@@ -11,7 +11,9 @@
         "backgroundColor": "#FFE5D9"
       },
       "package": "com.tomyguia.app",
-      "permissions": ["RECORD_AUDIO"]
+      "permissions": [
+        "RECORD_AUDIO"
+      ]
     },
     "splash": {
       "backgroundColor": "#FFE5D9"
@@ -36,7 +38,8 @@
           "photosPermission": "TomyGuia necesita acceso a tus fotos para tu perfil.",
           "cameraPermission": "TomyGuia necesita acceso a tu cámara para tu foto de perfil."
         }
-      ]
+      ],
+      "expo-audio"
     ]
   }
 }
