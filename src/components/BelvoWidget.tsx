@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ActivityIndicator, TouchableOpacity, Text } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { BELVO_CONFIG } from '../constants/belvoConfig';
@@ -10,17 +10,18 @@ interface Props {
 }
 
 export function BelvoWidget({ onSuccess, onError, onClose }: Props) {
-  const webviewRef = useRef(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading]     = useState(true);
   const [loadError, setLoadError] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
-  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg]   = useState('');
+  const [widgetUrl, setWidgetUrl] = useState<string | null>(null);
 
-  // Paso 1: obtener token de acceso del widget desde la API de Belvo
+  // Paso 1: obtener access token y construir la URL del widget
   useEffect(() => {
     const getToken = async () => {
       try {
-        const credentials = btoa(`${BELVO_CONFIG.secretId}:${BELVO_CONFIG.secretPassword}`);
+        const credentials = btoa(
+          `${BELVO_CONFIG.secretId}:${BELVO_CONFIG.secretPassword}`
+        );
         const res = await fetch(`${BELVO_CONFIG.sandboxUrl}/api/token/`, {
           method: 'POST',
           headers: {
@@ -40,11 +41,14 @@ export function BelvoWidget({ onSuccess, onError, onClose }: Props) {
         }
 
         const data = await res.json();
-        const token = data.access || data.token || data.widget_token;
+        const token = data.access;
         if (!token) throw new Error('No se recibió token de Belvo');
-        setAccessToken(token);
+
+        // Construir URL oficial del widget de Belvo para WebView
+        const url = `https://widget.belvo.io/?access_token=${token}&locale=es&country_codes=MX&access_mode=recurrent&resources=ACCOUNTS,TRANSACTIONS`;
+        setWidgetUrl(url);
       } catch (e: any) {
-        setErrorMsg(e.message || 'Error obteniendo token de Belvo');
+        setErrorMsg(e.message || 'Error conectando con Belvo');
         setLoadError(true);
         setLoading(false);
       }
@@ -52,94 +56,30 @@ export function BelvoWidget({ onSuccess, onError, onClose }: Props) {
     getToken();
   }, []);
 
-  const widgetHtml = accessToken ? `<!DOCTYPE html>
-<html>
-<head>
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-html,body{width:100%;height:100%;background:#FFF5F7}
-#belvo{width:100%;height:100%}
-</style>
-</head>
-<body>
-<div id="belvo"></div>
-<script>
-(function() {
-  var RN = window.ReactNativeWebView;
-  var attempts = 0;
+  // Paso 2: escuchar eventos del widget via cambios de URL (deeplinks)
+  const handleNavigationChange = (navState: any) => {
+    const { url } = navState;
+    if (!url) return;
 
-  function send(obj) { RN.postMessage(JSON.stringify(obj)); }
+    console.log('[Belvo URL]', url);
 
-  function buildWidget() {
-    try {
-      belvoSDK.createWidget('${accessToken}', {
-        locale: 'es',
-        country_codes: ['MX'],
-        access_mode: 'recurrent',
-        resources: ['ACCOUNTS', 'TRANSACTIONS'],
-        callback: function(link, institution) {
-          send({ type: 'SUCCESS', linkId: link, institution: institution });
-        },
-        onExit: function() { send({ type: 'EXIT' }); },
-        onEvent: function(data) { send({ type: 'EVENT', data: data }); }
-      }).build();
-      send({ type: 'WIDGET_BUILT' });
-    } catch(e) {
-      send({ type: 'BUILD_ERROR', message: e.message });
+    // Belvo usa deeplinks para comunicar eventos
+    // success: belvo://success?link=xxx&institution=xxx
+    // exit:    belvo://exit
+    if (url.includes('belvo://success') || url.includes('success?link=')) {
+      const linkMatch       = url.match(/link=([^&]+)/);
+      const institutionMatch = url.match(/institution=([^&]+)/);
+      const linkId          = linkMatch ? decodeURIComponent(linkMatch[1]) : '';
+      const institution     = institutionMatch ? decodeURIComponent(institutionMatch[1]) : '';
+      onSuccess(linkId, institution);
+    } else if (url.includes('belvo://exit') || url.includes('exit?')) {
+      onClose();
     }
-  }
-
-  function waitForSDK() {
-    attempts++;
-    if (typeof belvoSDK !== 'undefined') {
-      buildWidget();
-    } else if (attempts < 40) {
-      setTimeout(waitForSDK, 300);
-    } else {
-      send({ type: 'TIMEOUT', message: 'El SDK no respondió. Revisa tu conexión.' });
-    }
-  }
-
-  var s = document.createElement('script');
-  s.src = 'https://cdn.belvo.io/belvo-widget-1-stable.js';
-  s.onerror = function() {
-    send({ type: 'SCRIPT_ERROR', message: 'No se pudo cargar el widget.' });
-  };
-  document.head.appendChild(s);
-  setTimeout(waitForSDK, 500);
-})();
-</script>
-</body>
-</html>` : '';
-
-  const handleMessage = (event: any) => {
-    try {
-      const data = JSON.parse(event.nativeEvent.data);
-      console.log('[Belvo]', data.type, data.message || '');
-      switch (data.type) {
-        case 'WIDGET_BUILT':
-          setLoading(false);
-          break;
-        case 'SUCCESS':
-          onSuccess(data.linkId, data.institution);
-          break;
-        case 'EXIT':
-          onClose();
-          break;
-        case 'SCRIPT_ERROR':
-        case 'BUILD_ERROR':
-        case 'TIMEOUT':
-          setErrorMsg(data.message || 'Error desconocido');
-          setLoadError(true);
-          setLoading(false);
-          break;
-      }
-    } catch (e) {}
   };
 
   return (
     <View style={s.container}>
+      {/* Header */}
       <View style={s.header}>
         <Text style={s.headerTxt}>Conecta tu banco</Text>
         <TouchableOpacity onPress={onClose}>
@@ -147,17 +87,28 @@ html,body{width:100%;height:100%;background:#FFF5F7}
         </TouchableOpacity>
       </View>
 
-      {accessToken && (
+      {/* WebView con URL oficial de Belvo */}
+      {widgetUrl && (
         <WebView
-          ref={webviewRef}
-          source={{ html: widgetHtml }}
+          source={{ uri: widgetUrl }}
           style={s.webview}
-          onMessage={handleMessage}
           javaScriptEnabled
           domStorageEnabled
           mixedContentMode="always"
           originWhitelist={['*']}
           thirdPartyCookiesEnabled
+          onNavigationStateChange={handleNavigationChange}
+          onShouldStartLoadWithRequest={(request) => {
+            const { url } = request;
+            // Interceptar deeplinks de Belvo
+            if (url.startsWith('belvo://') || url.includes('success?link=') || url.includes('exit?')) {
+              handleNavigationChange({ url });
+              return false; // no navegar, ya lo manejamos
+            }
+            return true;
+          }}
+          onLoadStart={() => setLoading(true)}
+          onLoadEnd={() => setLoading(false)}
           onError={(e) => {
             setErrorMsg(e.nativeEvent.description);
             setLoadError(true);
@@ -166,15 +117,17 @@ html,body{width:100%;height:100%;background:#FFF5F7}
         />
       )}
 
+      {/* Cargando token o widget */}
       {loading && !loadError && (
         <View style={s.overlay}>
           <ActivityIndicator size="large" color="#F4ACB7" />
           <Text style={s.loadingTxt}>
-            {accessToken ? 'Cargando widget...' : 'Autenticando con Belvo...'}
+            {widgetUrl ? 'Cargando banco...' : 'Autenticando...'}
           </Text>
         </View>
       )}
 
+      {/* Error */}
       {loadError && (
         <View style={s.overlay}>
           <Text style={s.errorEmoji}>❌</Text>

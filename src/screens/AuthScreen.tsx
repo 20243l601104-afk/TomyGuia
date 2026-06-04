@@ -21,6 +21,7 @@ export function AuthScreen({ onGoogle, onSkip }: Props) {
 
   const [request, response, promptAsync] = Google.useAuthRequest({
     androidClientId: '544990341254-1pafv6o1mau326ntl8320uffkf0sr0oi.apps.googleusercontent.com',
+    webClientId: '544990341254-mqq6hr0ll202hhkvkeh1rhu4krvhk6o7.apps.googleusercontent.com',
     redirectUri: makeRedirectUri({ scheme: 'com.tomyguia.app' }),
   });
 
