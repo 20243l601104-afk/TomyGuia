@@ -8,7 +8,8 @@
     "userInterfaceStyle": "light",
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#FFE5D9"
+        "backgroundColor": "#FFE5D9",
+        "foregroundImage": "./assets/adaptive-icon.png"
       },
       "package": "com.tomyguia.app",
       "permissions": [
