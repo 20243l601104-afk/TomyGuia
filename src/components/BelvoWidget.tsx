@@ -30,7 +30,7 @@ export function BelvoWidget({ onSuccess, onError, onClose }: Props) {
           body: JSON.stringify({
             id: BELVO_CONFIG.secretId,
             password: BELVO_CONFIG.secretPassword,
-            scopes: 'read_institutions,write_links,read_transactions',
+            scopes: 'read_institutions,write_links',
           }),
         });
 
