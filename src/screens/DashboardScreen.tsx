@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CalendarWidget } from '../components/CalendarWidget';
@@ -64,11 +64,25 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
   const onExp = useCallback((l: FixedExpense[]) => setFel(l), []);
   const ft = nt.total > 0 ? nt.total : me;
   const remainingBills = Math.max(0, ft - nt.paid);
-  const np = remainingBills > 0 ? Math.min((needsBudget / remainingBills) * 100, 100) : 100;
+  // [cálculos de barras — ver abajo]
 
   /* ─── Gastos ─── */
   const [exps, setExps] = useState<Expense[]>([]);
   const [paidBills, setPaidBills] = useState<{ id: string; title: string; amount: number }[]>([]);
+
+  // Barra 1: % de recibos pagados
+  const totalBillsCount   = seedExpenses.length;
+  const paidBillsCount    = paidBills.length;
+  const np = totalBillsCount > 0
+    ? Math.round((paidBillsCount / totalBillsCount) * 100)
+    : 0;
+  // Barra 2: % de dinero disponible vs recibos pendientes
+  const pendingBillsAmount = seedExpenses
+    .filter((e: any) => !paidBills.some((p: any) => p.id === e.id))
+    .reduce((a: number, e: any) => a + e.amount, 0);
+  const moneyPct = pendingBillsAmount > 0
+    ? Math.min(Math.round((needsBudget / pendingBillsAmount) * 100), 100)
+    : 100;
 
   /* ─── Banco ─── */
   const [bmo, setBmo] = useState(false);
@@ -124,7 +138,7 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
   };
 
   return (
-    <KeyboardAvoidingView style={[s.con, { paddingTop: ins.top }]} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
+    <View style={[s.con, { paddingTop: ins.top }]}>
       <View style={[s.bl, s.b1]} /><View style={[s.bl, s.b2]} />
 
       {/* Header */}
@@ -140,16 +154,52 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={s.sc} contentContainerStyle={{ paddingBottom: 20 }} showsVerticalScrollIndicator={false}>
+      <ScrollView style={s.sc} contentContainerStyle={{ paddingBottom: 140 }} showsVerticalScrollIndicator={false}>
 
         {/* ═══ 1. NECESIDADES (Rosa #F4ACB7) — 50% ═══ */}
         <View style={s.cardNec}>
           <View style={s.cardHead}>
             <View style={s.nt2}><Ionicons name="receipt-outline" size={16} color="#F4ACB7" /><Text style={s.ntx}>Necesidades</Text></View>
-            <View style={[s.tg, { backgroundColor: '#F4ACB7' }]}><Text style={s.tt}>{np.toFixed(0)}% cubierto</Text></View>
+            <View style={[s.tg, { backgroundColor: '#F4ACB7' }]}><Text style={s.tt}>{paidBillsCount}/{totalBillsCount} recibos</Text></View>
           </View>
-          <View style={s.na}><Text style={[s.nab, { color: '#F4ACB7' }]}>${needsBudget.toLocaleString('es-MX')}</Text><Text style={s.nas}>/ ${remainingBills.toLocaleString('es-MX')} por pagar</Text></View>
-          <View style={s.pt}><View style={[s.pf, { width: `${np}%` as any, backgroundColor: '#F4ACB7' }]} /></View>
+          {/* Barra 1 — Recibos pagados */}
+          <View style={s.barraBloque}>
+            <View style={s.barraLabelRow}>
+              <View style={s.barraLabelLeft}>
+                <Ionicons name="receipt-outline" size={13} color="#F4ACB7" />
+                <Text style={s.barraLabel}>Recibos pagados</Text>
+              </View>
+              <Text style={s.barraValor}>{paidBillsCount} de {totalBillsCount}</Text>
+            </View>
+            <View style={s.pt}>
+              <View style={[s.pf, { width: `${np}%` as any, backgroundColor: '#F4ACB7' }]} />
+            </View>
+            <Text style={s.barraSubtexto}>{np}% completado</Text>
+          </View>
+
+          {/* Barra 2 — Dinero disponible vs recibos pendientes */}
+          <View style={s.barraBloque}>
+            <View style={s.barraLabelRow}>
+              <View style={s.barraLabelLeft}>
+                <Ionicons name="wallet-outline" size={13} color={moneyPct >= 100 ? '#85A89E' : moneyPct >= 50 ? '#F3C57C' : '#FF8A80'} />
+                <Text style={s.barraLabel}>Dinero apartado</Text>
+              </View>
+              <Text style={[s.barraValor, { color: moneyPct >= 100 ? '#85A89E' : moneyPct >= 50 ? '#B58A3A' : '#D64545' }]}>
+                ${needsBudget.toLocaleString('es-MX')} de ${pendingBillsAmount.toLocaleString('es-MX')}
+              </Text>
+            </View>
+            <View style={s.pt}>
+              <View style={[s.pf, {
+                width: `${moneyPct}%` as any,
+                backgroundColor: moneyPct >= 100 ? '#85A89E' : moneyPct >= 50 ? '#F3C57C' : '#FF8A80'
+              }]} />
+            </View>
+            <Text style={[s.barraSubtexto, { color: moneyPct < 50 ? '#D64545' : '#9D818970' }]}>
+              {moneyPct >= 100 ? '✅ Tienes para cubrir todo lo que falta'
+                : moneyPct >= 50 ? `Cubre el ${moneyPct}% de lo que queda por pagar`
+                : `⚠️ Solo cubre el ${moneyPct}% de lo pendiente`}
+            </Text>
+          </View>
           {paidBills.length > 0 && (
             <View style={{ marginTop: 8, gap: 4 }}>
               {paidBills.map((b, i) => (
@@ -244,9 +294,7 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
         </View>
       </ScrollView>
 
-      <View style={s.cbr}>
-        <BottomChat onIncomeAdded={onIA} onExpenseAdded={onEA} onBillPaid={onBillPaid} fixedExpenses={seedExpenses} currentNeeds={needsBudget} currentWants={wantsBudget} currentSavings={ef} totalBalance={totalBal} />
-      </View>
+      <View style={s.cbr}><BottomChat onIncomeAdded={onIA} onExpenseAdded={onEA} onBillPaid={onBillPaid} fixedExpenses={seedExpenses} currentNeeds={needsBudget} currentWants={wantsBudget} currentSavings={ef} totalBalance={totalBal} /></View>
 <FloatingAssistant
         wantsBudget={wantsBudget}
         wantsSpent={exps.filter(e => e.category === 'wants').reduce((a, e) => a + e.amount, 0)}
@@ -258,7 +306,7 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
         recentActivityCount={exps.filter(e => Date.now() - e.id < 2 * 60 * 60 * 1000).length}
       />     
  <BankConnectModal isOpen={bmo} onClose={() => setBmo(false)} onConnected={onBC} />
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -273,6 +321,12 @@ const s = StyleSheet.create({
   av: { width: 52, height: 52, borderRadius: 26, borderWidth: 3, borderColor: 'rgba(255,255,255,0.6)', backgroundColor: '#fff' },
   ai: { width: '100%', height: '100%', borderRadius: 26 },
   incognito: { width: '100%', height: '100%', borderRadius: 26, backgroundColor: '#FFCAD4', alignItems: 'center', justifyContent: 'center' },
+  barraBloque:    { gap: 4, marginBottom: 10 },
+  barraLabelRow:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  barraLabelLeft: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  barraLabel:     { fontSize: 12, fontWeight: '600', color: '#9D8189', opacity: 0.8 },
+  barraValor:     { fontSize: 12, fontWeight: '800', color: '#9D8189' },
+  barraSubtexto:  { fontSize: 11, color: '#9D818970', marginTop: 1 },
   flowerBadge: { position: 'absolute', bottom: -4, right: -4, backgroundColor: '#fff', borderRadius: 99, paddingHorizontal: 5, paddingVertical: 1, elevation: 4, borderWidth: 1, borderColor: '#F3C57C40' },
   flowerBadgeTxt: { fontSize: 9, fontWeight: '800', color: '#E8963B' },
   sc: { flex: 1, paddingHorizontal: 24, paddingTop: 8, zIndex: 10 },
@@ -327,5 +381,5 @@ const s = StyleSheet.create({
   sumLabel: { fontSize: 10, fontWeight: '700', color: '#9D8189', opacity: 0.7 },
   sumVal: { fontSize: 12, fontWeight: '800' },
   sumTotal: { fontSize: 11, fontWeight: '700', color: '#9D8189', opacity: 0.6, textAlign: 'center' },
-  cbr: { zIndex: 40, backgroundColor: 'transparent' },
+  cbr: { position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 40 },
 });

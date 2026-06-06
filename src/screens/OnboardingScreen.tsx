@@ -105,7 +105,7 @@ function AmountInput({ label, suffix, skip, required, onSubmit, onSkip }: Amount
    OnboardingScreen
    ────────────────────────────────────────────── */
 interface Props {
-  onComplete: (r: { fixedExpenses: FixedExpenseSeed[]; totalBalance: number; emergencyFundGoal: number; monthlyIncome: number }) => void;
+  onComplete: (r: { fixedExpenses: FixedExpenseSeed[]; totalBalance: number; emergencyFundGoal: number; monthlyIncome: number; housing: string | null; transport: string | null }) => void;
 }
 
 export function OnboardingScreen({ onComplete }: Props) {
@@ -262,7 +262,7 @@ export function OnboardingScreen({ onComplete }: Props) {
               ))}
               {exps.length === 0 && <Text style={s.se}>Sin gastos fijos registrados.</Text>}
             </View>
-            <TouchableOpacity style={[s.bn, s.bnp]} onPress={() => onComplete({ fixedExpenses: exps, totalBalance: bal, emergencyFundGoal: goal, monthlyIncome: ans.monthlyIncome })}>
+            <TouchableOpacity style={[s.bn, s.bnp]} onPress={() => onComplete({ fixedExpenses: exps, totalBalance: bal, emergencyFundGoal: goal, monthlyIncome: ans.monthlyIncome, housing: ans.housing, transport: ans.transport })}>
               <Text style={s.bpt}>Ir a mi dashboard</Text>
               <Ionicons name="checkmark" size={18} color="#fff" />
             </TouchableOpacity>

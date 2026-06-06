@@ -45,7 +45,7 @@ export function BelvoWidget({ onSuccess, onError, onClose }: Props) {
         if (!token) throw new Error('No se recibió token de Belvo');
 
         // Construir URL oficial del widget de Belvo para WebView
-        const url = `https://widget.belvo.io/?access_token=${token}&locale=es&country_codes=MX&access_mode=recurrent&resources=ACCOUNTS,TRANSACTIONS`;
+        const url = `https://widget.belvo.io/?access_token=${token}&locale=es&country_codes=MX&access_mode=recurrent`;
         setWidgetUrl(url);
       } catch (e: any) {
         setErrorMsg(e.message || 'Error conectando con Belvo');

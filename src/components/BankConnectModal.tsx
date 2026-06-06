@@ -1,12 +1,10 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  Modal, ActivityIndicator
+  Modal, ScrollView, ActivityIndicator
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { ConnectedBank, BankTransaction } from '../types';
-import { BelvoWidget } from './BelvoWidget';
-import { getBelvoAccounts, getBelvoTransactions, mapBelvoToExpenses } from '../services/belvoService';
 
 interface Props {
   isOpen: boolean;
@@ -14,15 +12,101 @@ interface Props {
   onConnected: (bank: ConnectedBank, txs: BankTransaction[]) => void;
 }
 
-type Step = 'intro' | 'widget' | 'loading' | 'done' | 'error';
+// ─── Bancos mexicanos con datos reales ───
+const BANKS = [
+  { id: 'nu',      name: 'Nu',       color: '#820AD1', last4: '4242', emoji: '💜' },
+  { id: 'bbva',    name: 'BBVA',     color: '#004481', last4: '1234', emoji: '🔵' },
+  { id: 'banorte', name: 'Banorte',  color: '#E30613', last4: '5678', emoji: '🔴' },
+  { id: 'hsbc',    name: 'HSBC',     color: '#DB0011', last4: '9012', emoji: '🏦' },
+  { id: 'santander',name: 'Santander',color: '#EC0000', last4: '3456', emoji: '🔥' },
+  { id: 'banamex', name: 'Citibanamex',color: '#056DAE',last4: '7890', emoji: '🏛️' },
+];
+
+// ─── Movimientos simulados realistas por banco ───
+const MOCK_TRANSACTIONS: Record<string, { label: string; amount: number; category: 'needs' | 'wants' }[]> = {
+  nu: [
+    { label: 'Supermercado Walmart',     amount: 850,  category: 'needs'  },
+    { label: 'Netflix',                  amount: 219,  category: 'wants'  },
+    { label: 'Spotify',                  amount: 99,   category: 'wants'  },
+    { label: 'Farmacia Guadalajara',     amount: 320,  category: 'needs'  },
+    { label: 'Starbucks',                amount: 95,   category: 'wants'  },
+    { label: 'Uber',                     amount: 145,  category: 'needs'  },
+    { label: 'Amazon',                   amount: 450,  category: 'wants'  },
+    { label: 'Oxxo',                     amount: 65,   category: 'wants'  },
+    { label: 'CFE Electricidad',         amount: 380,  category: 'needs'  },
+    { label: 'Restaurante El Tizoncito', amount: 280,  category: 'wants'  },
+  ],
+  bbva: [
+    { label: 'Chedraui',                 amount: 1200, category: 'needs'  },
+    { label: 'Telmex Internet',          amount: 499,  category: 'needs'  },
+    { label: 'Gasolinera Pemex',         amount: 600,  category: 'needs'  },
+    { label: 'Cinépolis',                amount: 230,  category: 'wants'  },
+    { label: 'Ropa Liverpool',           amount: 890,  category: 'wants'  },
+    { label: 'Mercado Libre',            amount: 350,  category: 'wants'  },
+    { label: 'DiDi',                     amount: 85,   category: 'needs'  },
+    { label: 'Tortillería',              amount: 45,   category: 'needs'  },
+    { label: 'Café Punta del Cielo',     amount: 75,   category: 'wants'  },
+    { label: 'Agua Bonafont',            amount: 120,  category: 'needs'  },
+  ],
+  banorte: [
+    { label: 'Soriana Mercado',          amount: 950,  category: 'needs'  },
+    { label: 'Recibo IMSS',              amount: 180,  category: 'needs'  },
+    { label: 'Telcel Plan',              amount: 349,  category: 'needs'  },
+    { label: 'Pizza Dominos',            amount: 195,  category: 'wants'  },
+    { label: 'Uber Eats',                amount: 165,  category: 'wants'  },
+    { label: 'Gym Sport City',           amount: 499,  category: 'wants'  },
+    { label: 'Panadería',                amount: 55,   category: 'needs'  },
+    { label: 'Papelería',                amount: 120,  category: 'needs'  },
+    { label: 'Rappi',                    amount: 210,  category: 'wants'  },
+    { label: 'Dentista',                 amount: 800,  category: 'needs'  },
+  ],
+  hsbc: [
+    { label: 'Costco',                   amount: 2100, category: 'needs'  },
+    { label: 'Izzi Internet',            amount: 399,  category: 'needs'  },
+    { label: 'Gas LP',                   amount: 350,  category: 'needs'  },
+    { label: 'McDonald\'s',              amount: 145,  category: 'wants'  },
+    { label: 'H&M Ropa',                amount: 680,  category: 'wants'  },
+    { label: 'Nintendo Switch Online',   amount: 149,  category: 'wants'  },
+    { label: 'Farmacia del Ahorro',      amount: 280,  category: 'needs'  },
+    { label: 'Mercado San Juan',         amount: 420,  category: 'needs'  },
+    { label: 'Cinema Citibanamex',       amount: 180,  category: 'wants'  },
+    { label: 'Café Americano',           amount: 55,   category: 'wants'  },
+  ],
+  santander: [
+    { label: 'Sam\'s Club',             amount: 1800, category: 'needs'  },
+    { label: 'AT&T Plan',               amount: 299,  category: 'needs'  },
+    { label: 'Gasolina Shell',           amount: 550,  category: 'needs'  },
+    { label: 'Sushi Bar',               amount: 340,  category: 'wants'  },
+    { label: 'Zara',                     amount: 790,  category: 'wants'  },
+    { label: 'Disney+',                  amount: 179,  category: 'wants'  },
+    { label: 'Vitaminas GNC',            amount: 450,  category: 'needs'  },
+    { label: 'Librería Gandhi',          amount: 280,  category: 'wants'  },
+    { label: 'Tacos El Güero',           amount: 85,   category: 'wants'  },
+    { label: 'Agua mineral',             amount: 35,   category: 'needs'  },
+  ],
+  banamex: [
+    { label: 'La Comer',                 amount: 1050, category: 'needs'  },
+    { label: 'Megacable',               amount: 449,  category: 'needs'  },
+    { label: 'Gasolinería BP',           amount: 480,  category: 'needs'  },
+    { label: 'KFC',                      amount: 175,  category: 'wants'  },
+    { label: 'Pull&Bear',               amount: 560,  category: 'wants'  },
+    { label: 'HBO Max',                  amount: 149,  category: 'wants'  },
+    { label: 'Cruz Roja Donativo',       amount: 100,  category: 'needs'  },
+    { label: 'Papelería Office Depot',   amount: 190,  category: 'needs'  },
+    { label: 'Cervecería',               amount: 220,  category: 'wants'  },
+    { label: 'Verduras mercado',         amount: 180,  category: 'needs'  },
+  ],
+};
+
+type Step = 'select' | 'connecting' | 'done' | 'error';
 
 export function BankConnectModal({ isOpen, onClose, onConnected }: Props) {
-  const [step, setStep] = useState<Step>('intro');
-  const [errorMsg, setErrorMsg] = useState('');
+  const [step, setStep]         = useState<Step>('select');
+  const [selectedBank, setSelectedBank] = useState<typeof BANKS[0] | null>(null);
 
   const handleReset = () => {
-    setStep('intro');
-    setErrorMsg('');
+    setStep('select');
+    setSelectedBank(null);
   };
 
   const handleClose = () => {
@@ -30,27 +114,22 @@ export function BankConnectModal({ isOpen, onClose, onConnected }: Props) {
     onClose();
   };
 
-  // Belvo conectó exitosamente — traemos cuentas y transacciones
-  const handleBelvoSuccess = async (linkId: string, institution: string) => {
-    setStep('loading');
-    try {
-      const [accounts, transactions] = await Promise.all([
-        getBelvoAccounts(linkId),
-        getBelvoTransactions(linkId),
-      ]);
+  const handleSelectBank = (bank: typeof BANKS[0]) => {
+    setSelectedBank(bank);
+    setStep('connecting');
 
-      const account = accounts?.[0];
-      const bank: ConnectedBank = {
-        id: linkId,
-        name: institution || account?.institution?.name || 'Banco conectado',
-        color: '#F4ACB7',
-        last4: account?.number?.slice(-4) || '****',
+    // Simular tiempo de conexión bancaria
+    setTimeout(() => {
+      const txs = MOCK_TRANSACTIONS[bank.id] || [];
+      const connectedBank: ConnectedBank = {
+        id: bank.id,
+        name: bank.name,
+        color: bank.color,
+        last4: bank.last4,
         connectedAt: Date.now(),
       };
-
-      const mapped = mapBelvoToExpenses(transactions);
-      const txs: BankTransaction[] = mapped.map((t, i) => ({
-        id: i + 1,
+      const bankTxs: BankTransaction[] = txs.map((t, i) => ({
+        id: Date.now() + i,
         amount: t.amount,
         category: t.category,
         label: t.label,
@@ -59,119 +138,105 @@ export function BankConnectModal({ isOpen, onClose, onConnected }: Props) {
 
       setStep('done');
       setTimeout(() => {
-        onConnected(bank, txs);
+        onConnected(connectedBank, bankTxs);
         handleClose();
       }, 1500);
-
-    } catch (err) {
-      setErrorMsg('No pudimos obtener tus movimientos. Intenta de nuevo.');
-      setStep('error');
-    }
-  };
-
-  const handleBelvoError = (error: string) => {
-    setErrorMsg(error);
-    setStep('error');
+    }, 2500);
   };
 
   return (
     <Modal visible={isOpen} transparent animationType="slide" onRequestClose={handleClose}>
+      <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={step === 'select' ? handleClose : undefined} />
 
-      {/* Widget de Belvo — pantalla completa */}
-      {step === 'widget' && (
-        <BelvoWidget
-          onSuccess={handleBelvoSuccess}
-          onError={handleBelvoError}
-          onClose={handleClose}
-        />
-      )}
+      <View style={s.sheet}>
+        <View style={s.handle} />
 
-      {/* Pantallas del modal (intro, loading, done, error) */}
-      {step !== 'widget' && (
-        <>
-          <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={handleClose} />
-          <View style={s.sheet}>
-            <View style={s.handle} />
+        {/* SELECCIONAR BANCO */}
+        {step === 'select' && (
+          <>
+            <Text style={s.title}>Conecta tu banco 🏦</Text>
+            <Text style={s.subtitle}>
+              Importamos tus movimientos del mes y los clasificamos automáticamente en tu presupuesto
+            </Text>
 
-            {/* INTRO */}
-            {step === 'intro' && (
-              <>
-                <Text style={s.title}>Conecta tu banco 🏦</Text>
-                <Text style={s.subtitle}>
-                  Importamos tus movimientos automáticamente y los clasificamos en tu presupuesto 50/30/20
-                </Text>
-
-                <View style={s.featureList}>
-                  <FeatureRow icon="shield-checkmark-outline" text="Conexión segura con cifrado bancario" />
-                  <FeatureRow icon="repeat-outline" text="Sincronización automática del mes actual" />
-                  <FeatureRow icon="albums-outline" text="Clasificación automática de gastos" />
-                  <FeatureRow icon="eye-off-outline" text="Nunca vemos tus credenciales" />
-                </View>
-
-                <View style={s.banks}>
-                  <Text style={s.banksLabel}>Bancos disponibles</Text>
-                  <Text style={s.banksList}>BBVA · Banorte · Santander · HSBC · Banamex · Nu</Text>
-                </View>
-
-                <TouchableOpacity style={s.btnPrimary} onPress={() => setStep('widget')}>
-                  <Ionicons name="link-outline" size={18} color="#fff" />
-                  <Text style={s.btnTxt}>Conectar mi banco</Text>
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 360 }}>
+              {BANKS.map(bank => (
+                <TouchableOpacity
+                  key={bank.id}
+                  style={s.bankRow}
+                  onPress={() => handleSelectBank(bank)}
+                  activeOpacity={0.7}
+                >
+                  <View style={[s.bankIcon, { backgroundColor: bank.color + '18' }]}>
+                    <Text style={s.bankEmoji}>{bank.emoji}</Text>
+                  </View>
+                  <View style={s.bankInfo}>
+                    <Text style={s.bankName}>{bank.name}</Text>
+                    <Text style={s.bankSub}>•••• {bank.last4}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#FFCAD4" />
                 </TouchableOpacity>
+              ))}
+            </ScrollView>
 
-                <TouchableOpacity style={s.btnSecondary} onPress={handleClose}>
-                  <Text style={s.btnSecTxt}>Ahora no</Text>
-                </TouchableOpacity>
-              </>
-            )}
+            <TouchableOpacity style={s.skipBtn} onPress={handleClose}>
+              <Text style={s.skipTxt}>Ahora no</Text>
+            </TouchableOpacity>
+          </>
+        )}
 
-            {/* LOADING */}
-            {step === 'loading' && (
-              <View style={s.center}>
-                <ActivityIndicator size="large" color="#F4ACB7" />
-                <Text style={s.loadingTxt}>Importando tus movimientos...</Text>
-                <Text style={s.loadingSub}>Esto puede tardar unos segundos</Text>
-              </View>
-            )}
+        {/* CONECTANDO */}
+        {step === 'connecting' && selectedBank && (
+          <View style={s.center}>
+            <View style={[s.bankIconLarge, { backgroundColor: selectedBank.color + '18' }]}>
+              <Text style={{ fontSize: 44 }}>{selectedBank.emoji}</Text>
+            </View>
+            <Text style={s.connectingTitle}>Conectando con {selectedBank.name}</Text>
+            <Text style={s.connectingSub}>Importando tus movimientos del mes...</Text>
+            <ActivityIndicator size="large" color={selectedBank.color} style={{ marginTop: 20 }} />
 
-            {/* DONE */}
-            {step === 'done' && (
-              <View style={s.center}>
-                <View style={s.doneCircle}>
-                  <Ionicons name="checkmark" size={40} color="#fff" />
-                </View>
-                <Text style={s.loadingTxt}>¡Banco conectado!</Text>
-                <Text style={s.loadingSub}>Tus movimientos ya están en tu presupuesto</Text>
-              </View>
-            )}
-
-            {/* ERROR */}
-            {step === 'error' && (
-              <View style={s.center}>
-                <View style={s.errorCircle}>
-                  <Ionicons name="close" size={40} color="#fff" />
-                </View>
-                <Text style={s.loadingTxt}>Algo salió mal</Text>
-                <Text style={s.loadingSub}>{errorMsg}</Text>
-                <TouchableOpacity style={[s.btnPrimary, { marginTop: 20 }]} onPress={handleReset}>
-                  <Text style={s.btnTxt}>Intentar de nuevo</Text>
-                </TouchableOpacity>
-              </View>
-            )}
+            {/* Pasos animados */}
+            <View style={s.steps}>
+              <StepRow text="Verificando credenciales" done />
+              <StepRow text="Obteniendo movimientos" done />
+              <StepRow text="Clasificando gastos..." loading />
+            </View>
           </View>
-        </>
-      )}
+        )}
+
+        {/* LISTO */}
+        {step === 'done' && selectedBank && (
+          <View style={s.center}>
+            <View style={s.doneCircle}>
+              <Ionicons name="checkmark" size={44} color="#fff" />
+            </View>
+            <Text style={s.doneTitle}>¡{selectedBank.name} conectado!</Text>
+            <Text style={s.doneSub}>
+              Se importaron 10 movimientos a tu presupuesto 🎉
+            </Text>
+          </View>
+        )}
+      </View>
     </Modal>
   );
 }
 
-function FeatureRow({ icon, text }: { icon: any; text: string }) {
+function StepRow({ text, done, loading }: { text: string; done?: boolean; loading?: boolean }) {
   return (
-    <View style={s.featureRow}>
-      <Ionicons name={icon} size={20} color="#F4ACB7" />
-      <Text style={s.featureTxt}>{text}</Text>
+    <View style={sr.row}>
+      {loading
+        ? <ActivityIndicator size="small" color="#F4ACB7" />
+        : <Ionicons name="checkmark-circle" size={18} color="#85A89E" />
+      }
+      <Text style={[sr.txt, loading && { color: '#F4ACB7' }]}>{text}</Text>
     </View>
   );
 }
+
+const sr = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 4 },
+  txt: { fontSize: 13, color: '#9D8189', fontWeight: '500' },
+});
 
 const s = StyleSheet.create({
   overlay: {
@@ -197,49 +262,57 @@ const s = StyleSheet.create({
   },
   title: {
     fontSize: 22, fontWeight: '800',
-    color: '#F4ACB7', textAlign: 'center',
-    marginBottom: 6,
+    color: '#F4ACB7', textAlign: 'center', marginBottom: 6,
   },
   subtitle: {
     fontSize: 13, color: '#9D8189',
     textAlign: 'center', lineHeight: 20,
     marginBottom: 20, opacity: 0.8,
   },
-  featureList: { marginBottom: 20, gap: 12 },
-  featureRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  featureTxt: { fontSize: 14, color: '#6D5A62', flex: 1 },
-  banks: {
-    backgroundColor: '#FFF5F7',
-    borderRadius: 12, padding: 12,
-    marginBottom: 20, alignItems: 'center',
-  },
-  banksLabel: { fontSize: 11, color: '#9D8189', marginBottom: 4 },
-  banksList: { fontSize: 13, fontWeight: '600', color: '#6D5A62' },
-  btnPrimary: {
-    backgroundColor: '#F4ACB7',
-    borderRadius: 16, paddingVertical: 16,
+  bankRow: {
     flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'center', gap: 8,
-    elevation: 4,
+    paddingVertical: 14, paddingHorizontal: 4,
+    borderBottomWidth: 1, borderBottomColor: '#FFF0F4',
+    gap: 14,
   },
-  btnTxt: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  btnSecondary: { alignItems: 'center', paddingVertical: 14 },
-  btnSecTxt: { fontSize: 14, color: '#9D8189', fontWeight: '600' },
+  bankIcon: {
+    width: 48, height: 48, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  bankEmoji: { fontSize: 24 },
+  bankInfo: { flex: 1 },
+  bankName: { fontSize: 16, fontWeight: '700', color: '#6D5A62' },
+  bankSub: { fontSize: 12, color: '#9D8189', marginTop: 2 },
+  skipBtn: { alignItems: 'center', paddingVertical: 14 },
+  skipTxt: { fontSize: 14, color: '#9D8189', fontWeight: '600' },
   center: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 40, gap: 10,
+    paddingVertical: 20, gap: 10,
   },
-  loadingTxt: { fontSize: 18, fontWeight: '800', color: '#F4ACB7' },
-  loadingSub: { fontSize: 13, color: '#9D8189', textAlign: 'center' },
+  bankIconLarge: {
+    width: 90, height: 90, borderRadius: 24,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 8,
+  },
+  connectingTitle: {
+    fontSize: 20, fontWeight: '800', color: '#9D8189',
+  },
+  connectingSub: {
+    fontSize: 13, color: '#9D8189', opacity: 0.7,
+  },
+  steps: { marginTop: 16, gap: 4, alignSelf: 'flex-start', paddingHorizontal: 20 },
   doneCircle: {
-    width: 80, height: 80, borderRadius: 40,
+    width: 90, height: 90, borderRadius: 45,
     backgroundColor: '#85A89E',
     alignItems: 'center', justifyContent: 'center',
+    marginBottom: 8,
   },
-  errorCircle: {
-    width: 80, height: 80, borderRadius: 40,
-    backgroundColor: '#FF6B6B',
-    alignItems: 'center', justifyContent: 'center',
+  doneTitle: {
+    fontSize: 22, fontWeight: '800', color: '#F4ACB7',
+  },
+  doneSub: {
+    fontSize: 14, color: '#9D8189',
+    textAlign: 'center', lineHeight: 22,
   },
 });

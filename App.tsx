@@ -7,6 +7,9 @@ import { OnboardingScreen } from './src/screens/OnboardingScreen';
 import { DashboardScreen } from './src/screens/DashboardScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
 import { AuthScreen } from './src/screens/AuthScreen';
+import { LegalScreen } from './src/screens/LegalScreen';
+import { AcademiaScreen } from './src/screens/AcademiaScreen';
+import { BottomNav, NavTab } from './src/components/BottomNav';
 import {
   saveOnboardingData, loadOnboardingData,
   saveProfile, loadProfile,
@@ -14,7 +17,7 @@ import {
 } from './src/services/storage';
 import type { FixedExpenseSeed, UserProfile } from './src/types';
 
-type AppView = 'loading' | 'auth' | 'onboarding' | 'dashboard' | 'profile';
+type AppView = 'loading' | 'auth' | 'onboarding' | 'main';
 
 const DEFAULT_PROFILE: UserProfile = {
   name: '',
@@ -25,37 +28,31 @@ const DEFAULT_PROFILE: UserProfile = {
 
 export default function App() {
   const [view, setView]                           = useState<AppView>('loading');
+  const [activeTab, setActiveTab]                 = useState<NavTab>('home');
   const [seedExpenses, setSeedExpenses]           = useState<FixedExpenseSeed[]>([]);
   const [totalBalance, setTotalBalance]           = useState(0);
   const [emergencyFundGoal, setEmergencyFundGoal] = useState(0);
   const [monthlyIncome, setMonthlyIncome]         = useState(0);
+  const [housing, setHousing]                     = useState<string | null>(null);
+  const [transport, setTransport]                 = useState<string | null>(null);
   const [profile, setProfile]                     = useState<UserProfile>(DEFAULT_PROFILE);
 
   useEffect(() => {
     const init = async () => {
-      const data        = await loadOnboardingData();
+      const data         = await loadOnboardingData();
       const savedProfile = await loadProfile();
-      const loggedIn    = await isLoggedIn();
-
+      const loggedIn     = await isLoggedIn();
       if (savedProfile) setProfile(savedProfile);
-
       if (!data) {
-        // Primera vez — onboarding
         setView('onboarding');
       } else {
-        // Ya hizo onboarding — cargar datos
         setSeedExpenses(data.fixedExpenses);
         setTotalBalance(data.totalBalance);
         setEmergencyFundGoal(data.emergencyFundGoal);
         setMonthlyIncome(data.monthlyIncome);
-
-        if (loggedIn) {
-          // Ya inició sesión antes — directo al dashboard
-          setView('dashboard');
-        } else {
-          // Hizo onboarding pero nunca inició sesión — mostrar login
-          setView('auth');
-        }
+        setHousing(data.housing || null);
+        setTransport(data.transport || null);
+        setView(loggedIn ? 'main' : 'auth');
       }
     };
     init();
@@ -66,28 +63,30 @@ export default function App() {
     totalBalance: number;
     emergencyFundGoal: number;
     monthlyIncome: number;
+    housing: string | null;
+    transport: string | null;
   }) => {
     await saveOnboardingData(r);
     setSeedExpenses(r.fixedExpenses);
     setTotalBalance(r.totalBalance);
     setEmergencyFundGoal(r.emergencyFundGoal);
     setMonthlyIncome(r.monthlyIncome);
+    setHousing(r.housing);
+    setTransport(r.transport);
     setView('auth');
   };
 
-  const handleGoogleLogin = async (user: {
-    name: string; email: string; photoUri: string | null;
-  }) => {
+  const handleGoogleLogin = async (user: { name: string; email: string; photoUri: string | null }) => {
     const updated: UserProfile = { ...profile, name: user.name, photoUri: user.photoUri };
     setProfile(updated);
     await saveProfile(updated);
-    await saveLoggedIn(); // ← guardar que ya inició sesión
-    setView('dashboard');
+    await saveLoggedIn();
+    setView('main');
   };
 
   const handleSkipLogin = async () => {
-    await saveLoggedIn(); // ← también guardar si saltó
-    setView('dashboard');
+    await saveLoggedIn();
+    setView('main');
   };
 
   const handleProfileSave = async (updated: UserProfile) => {
@@ -114,30 +113,52 @@ export default function App() {
     );
   }
 
+  if (view === 'onboarding') return <OnboardingScreen onComplete={handleOnboardingComplete} />;
+
+  if (view === 'auth') return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <StatusBar style="dark" />
+        <AuthScreen onGoogle={handleGoogleLogin} onSkip={handleSkipLogin} />
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
+  );
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <StatusBar style="dark" />
-        {view === 'onboarding' && <OnboardingScreen onComplete={handleOnboardingComplete} />}
-        {view === 'auth'       && <AuthScreen onGoogle={handleGoogleLogin} onSkip={handleSkipLogin} />}
-        {view === 'dashboard'  && (
-          <DashboardScreen
-            emergencyFundGoal={emergencyFundGoal}
-            totalBalance={totalBalance}
-            seedExpenses={seedExpenses}
-            monthlyIncome={monthlyIncome}
-            profile={profile}
-            onProfilePress={() => setView('profile')}
-            onAddFlowers={addFlowers}
-          />
-        )}
-        {view === 'profile' && (
-          <ProfileScreen
-            profile={profile}
-            onSave={handleProfileSave}
-            onBack={() => setView('dashboard')}
-          />
-        )}
+        <View style={{ flex: 1 }}>
+          <View style={{ flex: 1 }}>
+            {activeTab === 'home' && (
+              <DashboardScreen
+                emergencyFundGoal={emergencyFundGoal}
+                totalBalance={totalBalance}
+                seedExpenses={seedExpenses}
+                monthlyIncome={monthlyIncome}
+                profile={profile}
+                onProfilePress={() => setActiveTab('perfil')}
+                onAddFlowers={addFlowers}
+              />
+            )}
+            {activeTab === 'legal' && (
+              <LegalScreen
+                renta={housing === 'rent'}
+                tieneCarro={transport === 'car'}
+                nombreUsuaria={profile.name || undefined}
+              />
+            )}
+            {activeTab === 'academia' && <AcademiaScreen />}
+            {activeTab === 'perfil' && (
+              <ProfileScreen
+                profile={profile}
+                onSave={handleProfileSave}
+                onBack={() => setActiveTab('home')}
+              />
+            )}
+          </View>
+          <BottomNav active={activeTab} onPress={setActiveTab} />
+        </View>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
