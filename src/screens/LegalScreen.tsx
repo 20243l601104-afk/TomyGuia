@@ -101,7 +101,7 @@ FORMATO DE RESPUESTA:
 6. Máximo 5-6 pasos o 3 párrafos cortos
 7. Si es sobre violencia económica, responde con mucha empatía primero
 
-IMPORTANTE: Responde SIEMPRE en español. NO uses markdown, asteriscos ni formato especial — solo texto plano y emojis. Nunca uses códigos unicode como \U0001f... — usa los emojis directamente.`;
+IMPORTANTE: Responde SIEMPRE en español. Nunca uses códigos unicode como \U0001f... — usa los emojis directamente.`;
 
 // ─── PREGUNTAS FRECUENTES ────────────────────────────
 const CHIPS = [
@@ -247,12 +247,12 @@ export function LegalScreen({ renta = false, tieneCarro = false, nombreUsuaria }
         }));
 
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            system_instruction: { parts: [{ text: SYSTEM_PROMPT + (renta ? "\n\nCONTEXTO: La usuaria RENTA su vivienda." : "") + (tieneCarro ? "\n\nCONTEXTO: La usuaria TIENE CARRO." : "") }] },
+            system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
             contents: [
               ...historial,
               { role: 'user', parts: [{ text: texto }] },
@@ -272,7 +272,7 @@ export function LegalScreen({ renta = false, tieneCarro = false, nombreUsuaria }
       setMensajes(prev => prev.map((m, i) =>
         i === prev.length - 1 ? { ...m, texto: respuesta, cargando: false } : m
       ));
-    } catch (err: any) {console.log('[GEMINI]', err?.message, err?.toString());
+    } catch {
       // Fallback a respuestas offline si falla Gemini
       const respuesta = responderOffline(texto);
       setMensajes(prev => prev.map((m, i) =>
@@ -310,7 +310,7 @@ export function LegalScreen({ renta = false, tieneCarro = false, nombreUsuaria }
       const updated = [...documentos, nuevo];
       setDocumentos(updated);
       await guardarDocumentos(updated);
-    } catch (err: any) {console.log('[GEMINI]', err?.message, err?.toString()); Alert.alert('Error', 'No se pudo subir el documento'); }
+    } catch { Alert.alert('Error', 'No se pudo subir el documento'); }
   };
 
   const eliminarDoc = async (id: string) => {

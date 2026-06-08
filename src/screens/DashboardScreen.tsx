@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Modal, Alert, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CalendarWidget } from '../components/CalendarWidget';
@@ -19,6 +19,15 @@ interface Props {
   onAddFlowers: (amount: number, achievementId?: string) => void;
 }
 
+interface PagoAnual {
+  id: string;
+  nombre: string;
+  monto: number;       // meta total
+  ahorrado: number;    // lo que llevas
+  mesVence: number;    // 1-12
+  anioVence: number;
+}
+
 export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses, monthlyIncome, profile, onProfilePress, onAddFlowers }: Props) {
   const ins = useSafeAreaInsets();
 
@@ -30,6 +39,7 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
   const [needsBudget, setNeedsBudget] = useState(initial50);
   const [wantsBudget, setWantsBudget] = useState(initial30);
   const [ef, setEf] = useState(initial20);
+  const [dataLoaded, setDataLoaded] = useState(false);
 
   const totalBal = needsBudget + wantsBudget + ef;
 
@@ -69,6 +79,56 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
   /* ─── Gastos ─── */
   const [exps, setExps] = useState<Expense[]>([]);
   const [paidBills, setPaidBills] = useState<{ id: string; title: string; amount: number }[]>([]);
+  const [pagosAnuales, setPagosAnuales] = useState<PagoAnual[]>([]);
+  const [showAddPago, setShowAddPago] = useState(false);
+  const [newPagoNombre, setNewPagoNombre] = useState('');
+  const [newPagoMonto, setNewPagoMonto] = useState('');
+  const [newPagoMes, setNewPagoMes] = useState(new Date().getMonth() + 2 > 12 ? 1 : new Date().getMonth() + 2);
+  const [showCierreMes, setShowCierreMes] = useState(false);
+  const [showEmergency, setShowEmergency] = useState(false);
+  const [sobranteCierre, setSobranteCierre] = useState({ needs: 0, wants: 0 });
+  const [showAbonar, setShowAbonar] = useState(false);
+  const [abonarPagoId, setAbonarPagoId] = useState<string | null>(null);
+  const [abonarMonto, setAbonarMonto] = useState('');
+
+  // ── Cargar estado guardado al montar ──────────────────
+  useEffect(() => {
+    const load = async () => {
+      const saved = await loadDashboardState(initial50, initial30, initial20);
+
+      if (saved.isNewMonth) {
+        // Calcular sobrantes del mes anterior
+        const sobrNeedsVal = Math.max(0, saved.needsBudget - 
+          (saved.exps || []).filter((e: any) => e.category === 'needs').reduce((a: number, e: any) => a + e.amount, 0));
+        const sobrWantsVal = Math.max(0, saved.wantsBudget - 
+          (saved.exps || []).filter((e: any) => e.category === 'wants').reduce((a: number, e: any) => a + e.amount, 0));
+
+        if (sobrNeedsVal > 0 || sobrWantsVal > 0) {
+          setSobranteCierre({ needs: sobrNeedsVal, wants: sobrWantsVal });
+          setShowCierreMes(true);
+        }
+      }
+
+      setNeedsBudget(saved.needsBudget);
+      setWantsBudget(saved.wantsBudget);
+      setEf(saved.ef);
+      setExps(saved.exps);
+      setPaidBills(saved.paidBills);
+      if (saved.bank) setCb(saved.bank);
+      if (saved.pagosAnuales) setPagosAnuales(saved.pagosAnuales);
+      setDataLoaded(true);
+    };
+    load();
+  }, []);
+
+  // ── Guardar estado cuando cambia algo ─────────────────
+  useEffect(() => {
+    if (!dataLoaded) return; // no guardar antes de cargar
+    const timer = setTimeout(() => {
+      saveDashboardState({ needsBudget, wantsBudget, ef, exps, paidBills, bank: cb, pagosAnuales });
+    }, 500); // debounce 500ms
+    return () => clearTimeout(timer);
+  }, [needsBudget, wantsBudget, ef, exps, paidBills, cb, dataLoaded, pagosAnuales]);
 
   // Barra 1: % de recibos pagados
   const totalBillsCount   = seedExpenses.length;
@@ -137,6 +197,61 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
     return `hace ${Math.floor(h / 24)} d`;
   };
 
+  // ── Helpers para pagos anuales ────────────────────────
+  const getMesesRestantes = (mesVence: number, anioVence: number) => {
+    const hoy   = new Date();
+    const vence = new Date(anioVence, mesVence - 1, 1);
+    const diff  = (vence.getFullYear() - hoy.getFullYear()) * 12 + (vence.getMonth() - hoy.getMonth());
+    return Math.max(1, diff);
+  };
+
+  const getAhorroMensual = (pago: PagoAnual) => {
+    const falta    = Math.max(0, pago.monto - pago.ahorrado);
+    const meses    = getMesesRestantes(pago.mesVence, pago.anioVence);
+    return Math.ceil(falta / meses);
+  };
+
+  const handleAddPago = () => {
+    const monto = Number(newPagoMonto);
+    if (!newPagoNombre.trim() || monto <= 0) return;
+    const anio = newPagoMes <= new Date().getMonth() + 1
+      ? new Date().getFullYear() + 1
+      : new Date().getFullYear();
+    const nuevo: PagoAnual = {
+      id:         Date.now().toString(),
+      nombre:     newPagoNombre.trim(),
+      monto,
+      ahorrado:   0,
+      mesVence:   newPagoMes,
+      anioVence:  anio,
+    };
+    setPagosAnuales(p => [...p, nuevo]);
+    setNewPagoNombre(''); setNewPagoMonto('');
+    setNewPagoMes(new Date().getMonth() + 2 > 12 ? 1 : new Date().getMonth() + 2);
+    setShowAddPago(false);
+  };
+
+  const handleAbonarPago = (id: string) => {
+    setAbonarPagoId(id);
+    setAbonarMonto('');
+    setShowAbonar(true);
+  };
+
+  const confirmarAbono = () => {
+    const amt = Number(abonarMonto);
+    if (!amt || amt <= 0 || !abonarPagoId) return;
+    setPagosAnuales(p => p.map(x =>
+      x.id === abonarPagoId
+        ? { ...x, ahorrado: Math.min(x.monto, x.ahorrado + amt) }
+        : x
+    ));
+    setEf(prev => Math.max(0, prev - amt));
+    setShowAbonar(false);
+    setAbonarPagoId(null);
+    setAbonarMonto('');
+  };
+
+
   return (
     <View style={[s.con, { paddingTop: ins.top }]}>
       <View style={[s.bl, s.b1]} /><View style={[s.bl, s.b2]} />
@@ -144,14 +259,19 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
       {/* Header */}
       <View style={s.hd}>
         <View><Text style={s.gr}>¡Hola{profile.name ? `, ${profile.name}` : ''}!</Text><Text style={s.sg}>Lista para crecer</Text></View>
-        <TouchableOpacity style={s.av} onPress={onProfilePress} activeOpacity={0.7}>
+        <View style={s.headerRight}>
+          <TouchableOpacity style={s.emergenciaBtn} onPress={() => setShowEmergency(true)} activeOpacity={0.7}>
+            <Ionicons name="shield-half-outline" size={18} color="#F4ACB7" />
+          </TouchableOpacity>
+          <TouchableOpacity style={s.av} onPress={onProfilePress} activeOpacity={0.7}>
           {profile.photoUri ? (
             <Image source={{ uri: profile.photoUri }} style={s.ai} />
           ) : (
             <View style={s.incognito}><TomasaSVG size={32} floating={false} /></View>
           )}
           <View style={s.flowerBadge}><Text style={s.flowerBadgeTxt}>🌼{profile.flowers}</Text></View>
-        </TouchableOpacity>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView style={s.sc} contentContainerStyle={{ paddingBottom: 140 }} showsVerticalScrollIndicator={false}>
@@ -277,6 +397,324 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
           <Text style={s.fp}>🛡️ {mp} meses de seguridad asegurados</Text>
         </View>
 
+        {/* ═══ 4. PAGOS ANUALES (Morado #9D8189) ═══ */}
+        <View style={s.cardPago}>
+          <View style={s.cardHead}>
+            <View style={s.nt2}>
+              <Ionicons name="calendar-outline" size={16} color="#9D8189" />
+              <Text style={[s.ntx, { color: '#6D5A62' }]}>Pagos del año</Text>
+            </View>
+            <TouchableOpacity
+              style={[s.tg, { backgroundColor: '#9D818920', borderWidth: 1, borderColor: '#9D818940' }]}
+              onPress={() => setShowAddPago(true)}
+            >
+              <Ionicons name="add" size={14} color="#9D8189" />
+              <Text style={[s.tt, { color: '#9D8189' }]}>Agregar</Text>
+            </TouchableOpacity>
+          </View>
+
+          {pagosAnuales.length === 0 ? (
+            /* Estado vacío — Tomasa invita */
+            <TouchableOpacity style={s.pagoVacio} onPress={() => setShowAddPago(true)}>
+              <Text style={s.pagoVacioEmoji}>📅</Text>
+              <Text style={s.pagoVacioTitulo}>Planea tus pagos del año</Text>
+              <Text style={s.pagoVacioDesc}>
+                Predial, tenencia, seguro... agrégalos aquí y te digo cuánto ahorrar cada mes para no sorprenderte
+              </Text>
+              <View style={s.pagoVacioBtn}>
+                <Ionicons name="add-circle-outline" size={16} color="#9D8189" />
+                <Text style={s.pagoVacioBtnTxt}>Agregar primer pago</Text>
+              </View>
+            </TouchableOpacity>
+          ) : (
+            <View style={{ gap: 12 }}>
+              {pagosAnuales.map(pago => {
+                const pct          = Math.min((pago.ahorrado / pago.monto) * 100, 100);
+                const mesesRest    = getMesesRestantes(pago.mesVence, pago.anioVence);
+                const ahorroMes    = getAhorroMensual(pago);
+                const falta        = Math.max(0, pago.monto - pago.ahorrado);
+                const mesNombre    = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][pago.mesVence - 1];
+                const isUrgente    = mesesRest <= 2 && pct < 100;
+                const isCompleto   = pct >= 100;
+
+                return (
+                  <View key={pago.id} style={[s.pagoCard, isUrgente && s.pagoCardUrgente, isCompleto && s.pagoCardCompleto]}>
+                    <View style={s.pagoCardHead}>
+                      <Text style={s.pagoNombre}>{pago.nombre}</Text>
+                      <Text style={[s.pagoFecha, isUrgente && { color: '#D64545' }]}>
+                        {mesNombre} {pago.anioVence}
+                      </Text>
+                    </View>
+
+                    {/* Barra de progreso */}
+                    <View style={s.pt}>
+                      <View style={[s.pf, {
+                        width: `${pct}%` as any,
+                        backgroundColor: isCompleto ? '#85A89E' : isUrgente ? '#F4ACB7' : '#9D8189',
+                      }]} />
+                    </View>
+
+                    <View style={s.pagoCardFoot}>
+                      <Text style={s.pagoAhorrado}>
+                        ${pago.ahorrado.toLocaleString('es-MX')} de ${pago.monto.toLocaleString('es-MX')}
+                      </Text>
+                      {isCompleto ? (
+                        <Text style={s.pagoCompleto}>✅ Listo</Text>
+                      ) : (
+                        <Text style={[s.pagoMensual, isUrgente && { color: '#D64545' }]}>
+                          ${ahorroMes.toLocaleString('es-MX')}/mes
+                        </Text>
+                      )}
+                    </View>
+
+                    {!isCompleto && (
+                      <Text style={s.pagoMsg}>
+                        {isUrgente
+                          ? `¡Quedan ${mesesRest} mes${mesesRest > 1 ? 'es' : ''}! Falta $${falta.toLocaleString('es-MX')} 🌼`
+                          : `Aparta $${ahorroMes.toLocaleString('es-MX')} al mes — faltan ${mesesRest} meses 💪`}
+                      </Text>
+                    )}
+
+                    <View style={s.pagoActions}>
+                      <TouchableOpacity
+                        style={s.pagoAbonarBtn}
+                        onPress={() => handleAbonarPago(pago.id)}
+                        disabled={isCompleto}
+                      >
+                        <Ionicons name="add-circle-outline" size={14} color={isCompleto ? '#9D818960' : '#9D8189'} />
+                        <Text style={[s.pagoAbonarTxt, isCompleto && { opacity: 0.4 }]}>Abonar</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={s.pagoEliminarBtn}
+                        onPress={() => {
+                          Alert.alert('Eliminar', `¿Eliminar "${pago.nombre}"?`, [
+                            { text: 'Cancelar', style: 'cancel' },
+                            { text: 'Eliminar', style: 'destructive', onPress: () => {
+                              setPagosAnuales(p => p.filter(x => x.id !== pago.id));
+                              setEf(prev => prev + pago.ahorrado);
+                            }},
+                          ]);
+                        }}
+                      >
+                        <Ionicons name="trash-outline" size={14} color="#FFCAD4" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+        </View>
+
+        {/* ══ MODAL: ABONAR A PAGO ANUAL ══ */}
+      <Modal visible={showAbonar} transparent animationType="fade" onRequestClose={() => setShowAbonar(false)}>
+        <TouchableOpacity style={s.modalOverlay} activeOpacity={1} onPress={() => setShowAbonar(false)} />
+        <View style={[s.modalSheet, { paddingBottom: 40 }]}>
+          <View style={s.modalHandle} />
+          <Text style={s.modalTitulo}>Abonar al ahorro 💰</Text>
+          <Text style={s.modalDesc}>
+            {pagosAnuales.find(p => p.id === abonarPagoId)
+              ? `Falta $${Math.max(0, (pagosAnuales.find(p => p.id === abonarPagoId)?.monto || 0) - (pagosAnuales.find(p => p.id === abonarPagoId)?.ahorrado || 0)).toLocaleString('es-MX')} para completar ${pagosAnuales.find(p => p.id === abonarPagoId)?.nombre}`
+              : '¿Cuánto quieres agregar?'}
+          </Text>
+          <Text style={s.modalLabel}>Monto a abonar</Text>
+          <View style={s.modalInputRow}>
+            <Text style={s.modalDolar}>$</Text>
+            <TextInput
+              style={[s.modalInput, { flex: 1 }]}
+              value={abonarMonto}
+              onChangeText={setAbonarMonto}
+              placeholder="0"
+              keyboardType="numeric"
+              placeholderTextColor="#9D818960"
+              autoFocus
+            />
+          </View>
+          <Text style={{ fontSize: 12, color: '#9D818980', marginBottom: 16, marginTop: -8 }}>
+            Se descontará de tu fondo de emergencia
+          </Text>
+          <TouchableOpacity
+            style={[s.modalBtn, (!abonarMonto || Number(abonarMonto) <= 0) && { opacity: 0.4 }]}
+            onPress={confirmarAbono}
+            disabled={!abonarMonto || Number(abonarMonto) <= 0}
+          >
+            <Text style={s.modalBtnTxt}>Confirmar abono</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+
+      {/* ══ MODAL: EMERGENCIA ══ */}
+      <EmergencyModal visible={showEmergency} onClose={() => setShowEmergency(false)} />
+
+      {/* ══ MODAL: CIERRE DE MES ══ */}
+      <Modal visible={showCierreMes} transparent animationType="fade" onRequestClose={() => setShowCierreMes(false)}>
+        <View style={s.modalOverlay}>
+          <View style={[s.modalSheet, { paddingBottom: 40 }]}>
+            <View style={s.modalHandle} />
+
+            {/* Header con Tomasa */}
+            <View style={{ alignItems: 'center', marginBottom: 20, gap: 8 }}>
+              <Text style={{ fontSize: 48 }}>🌸</Text>
+              <Text style={[s.modalTitulo, { textAlign: 'center' }]}>¡Cerraste el mes!</Text>
+              <Text style={[s.modalDesc, { textAlign: 'center' }]}>
+                Te sobraron recursos del mes pasado. ¿Qué hacemos con ellos?
+              </Text>
+            </View>
+
+            {/* Sobrantes */}
+            <View style={s.cierreSobrantes}>
+              {sobranteCierre.needs > 0 && (
+                <View style={s.cierreSobranteRow}>
+                  <View style={[s.cierreDot, { backgroundColor: '#F4ACB7' }]} />
+                  <Text style={s.cierreSobranteTxt}>Necesidades</Text>
+                  <Text style={s.cierreSobranteVal}>${sobranteCierre.needs.toLocaleString('es-MX')}</Text>
+                </View>
+              )}
+              {sobranteCierre.wants > 0 && (
+                <View style={s.cierreSobranteRow}>
+                  <View style={[s.cierreDot, { backgroundColor: '#F3C57C' }]} />
+                  <Text style={s.cierreSobranteTxt}>Gustos</Text>
+                  <Text style={s.cierreSobranteVal}>${sobranteCierre.wants.toLocaleString('es-MX')}</Text>
+                </View>
+              )}
+              <View style={[s.cierreSobranteRow, { borderTopWidth: 1, borderTopColor: '#F0E0E5', paddingTop: 8, marginTop: 4 }]}>
+                <Text style={[s.cierreSobranteTxt, { fontWeight: '800' }]}>Total sobrante</Text>
+                <Text style={[s.cierreSobranteVal, { color: '#F4ACB7', fontWeight: '800' }]}>
+                  ${(sobranteCierre.needs + sobranteCierre.wants).toLocaleString('es-MX')}
+                </Text>
+              </View>
+            </View>
+
+            {/* Opciones */}
+            <View style={s.cierreOpciones}>
+              {/* Opción 1: Fondo de emergencia */}
+              <TouchableOpacity
+                style={s.cierreOpcion}
+                onPress={() => {
+                  setEf(prev => prev + sobranteCierre.needs + sobranteCierre.wants);
+                  setShowCierreMes(false);
+                }}
+              >
+                <Text style={s.cierreOpcionEmoji}>🛡️</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.cierreOpcionTitulo}>Fondo de emergencia</Text>
+                  <Text style={s.cierreOpcionDesc}>Súmalo a tu ahorro de seguridad</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#85A89E" />
+              </TouchableOpacity>
+
+              {/* Opción 2: Pagos anuales */}
+              {pagosAnuales.length > 0 && (
+                <TouchableOpacity
+                  style={s.cierreOpcion}
+                  onPress={() => {
+                    const total = sobranteCierre.needs + sobranteCierre.wants;
+                    // Distribuir entre pagos anuales pendientes
+                    const pendientes = pagosAnuales.filter(p => p.ahorrado < p.monto);
+                    if (pendientes.length > 0) {
+                      const porPago = Math.floor(total / pendientes.length);
+                      setPagosAnuales(prev => prev.map(p =>
+                        p.ahorrado < p.monto
+                          ? { ...p, ahorrado: Math.min(p.monto, p.ahorrado + porPago) }
+                          : p
+                      ));
+                    }
+                    setShowCierreMes(false);
+                  }}
+                >
+                  <Text style={s.cierreOpcionEmoji}>📅</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.cierreOpcionTitulo}>Pagos del año</Text>
+                    <Text style={s.cierreOpcionDesc}>Abonarlo a tus pagos anuales pendientes</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color="#9D8189" />
+                </TouchableOpacity>
+              )}
+
+              {/* Opción 3: Dejarlo */}
+              <TouchableOpacity
+                style={[s.cierreOpcion, { borderColor: '#F0E0E5' }]}
+                onPress={() => setShowCierreMes(false)}
+              >
+                <Text style={s.cierreOpcionEmoji}>💭</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.cierreOpcionTitulo}>Lo decido después</Text>
+                  <Text style={s.cierreOpcionDesc}>Cerrar sin mover el dinero</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#9D818960" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal agregar pago anual */}
+        <Modal visible={showAddPago} transparent animationType="slide" onRequestClose={() => setShowAddPago(false)}>
+          <TouchableOpacity style={s.modalOverlay} activeOpacity={1} onPress={() => setShowAddPago(false)} />
+          <View style={s.modalSheet}>
+            <View style={s.modalHandle} />
+            <Text style={s.modalTitulo}>Nuevo pago del año 📅</Text>
+            <Text style={s.modalDesc}>Agrega un pago anual y te digo cuánto guardar cada mes</Text>
+
+            <Text style={s.modalLabel}>¿Qué vas a pagar?</Text>
+            <TextInput
+              style={s.modalInput}
+              value={newPagoNombre}
+              onChangeText={setNewPagoNombre}
+              placeholder="Ej. Predial, Tenencia, Seguro..."
+              placeholderTextColor="#9D818960"
+            />
+
+            <Text style={s.modalLabel}>¿Cuánto cuesta aproximadamente?</Text>
+            <View style={s.modalInputRow}>
+              <Text style={s.modalDolar}>$</Text>
+              <TextInput
+                style={[s.modalInput, { flex: 1 }]}
+                value={newPagoMonto}
+                onChangeText={setNewPagoMonto}
+                placeholder="0"
+                keyboardType="numeric"
+                placeholderTextColor="#9D818960"
+              />
+            </View>
+
+            <Text style={s.modalLabel}>¿En qué mes vence?</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                {['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'].map((m, i) => (
+                  <TouchableOpacity
+                    key={i}
+                    style={[s.mesBtn, newPagoMes === i + 1 && s.mesBtnActive]}
+                    onPress={() => setNewPagoMes(i + 1)}
+                  >
+                    <Text style={[s.mesBtnTxt, newPagoMes === i + 1 && s.mesBtnTxtActive]}>{m}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+
+            {newPagoMonto && Number(newPagoMonto) > 0 && (
+              <View style={s.modalPreview}>
+                <Text style={s.modalPreviewTxt}>
+                  💡 Deberías apartar ~${Math.ceil(Number(newPagoMonto) / Math.max(1, (() => {
+                    const hoy = new Date();
+                    const vence = new Date(newPagoMes <= hoy.getMonth() + 1 ? hoy.getFullYear() + 1 : hoy.getFullYear(), newPagoMes - 1, 1);
+                    return Math.max(1, (vence.getFullYear() - hoy.getFullYear()) * 12 + (vence.getMonth() - hoy.getMonth()));
+                  })())).toLocaleString('es-MX')} al mes
+                </Text>
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={[s.modalBtn, (!newPagoNombre.trim() || !newPagoMonto) && { opacity: 0.4 }]}
+              onPress={handleAddPago}
+              disabled={!newPagoNombre.trim() || !newPagoMonto}
+            >
+              <Text style={s.modalBtnTxt}>Agregar pago</Text>
+            </TouchableOpacity>
+          </View>
+        </Modal>
+
         {/* ─── Resumen 50/30/20 ─── */}
         <View style={s.summary}>
           <Text style={s.sumTitle}>DISTRIBUCIÓN 50/30/20</Text>
@@ -327,6 +765,68 @@ const s = StyleSheet.create({
   barraLabel:     { fontSize: 12, fontWeight: '600', color: '#9D8189', opacity: 0.8 },
   barraValor:     { fontSize: 12, fontWeight: '800', color: '#9D8189' },
   barraSubtexto:  { fontSize: 11, color: '#9D818970', marginTop: 1 },
+  // Modal cierre de mes
+  cierreSobrantes:    { backgroundColor: '#FFF8F9', borderRadius: 16, padding: 14, marginBottom: 16, gap: 8 },
+  cierreSobranteRow:  { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  cierreDot:          { width: 10, height: 10, borderRadius: 5 },
+  cierreSobranteTxt:  { flex: 1, fontSize: 14, fontWeight: '600', color: '#9D8189' },
+  cierreSobranteVal:  { fontSize: 14, fontWeight: '700', color: '#6D5A62' },
+  cierreOpciones:     { gap: 10 },
+  cierreOpcion: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: '#fff', borderRadius: 16, padding: 14,
+    borderWidth: 1.5, borderColor: '#FFCAD4',
+  },
+  cierreOpcionEmoji:  { fontSize: 28 },
+  cierreOpcionTitulo: { fontSize: 14, fontWeight: '800', color: '#6D5A62', marginBottom: 2 },
+  cierreOpcionDesc:   { fontSize: 12, color: '#9D8189', opacity: 0.7 },
+  // Pagos anuales
+  cardPago:         { backgroundColor: '#9D818910', borderRadius: 28, padding: 20, marginBottom: 16, borderWidth: 1.5, borderColor: '#9D818930' },
+  pagoVacio:        { alignItems: 'center', paddingVertical: 20, gap: 8 },
+  pagoVacioEmoji:   { fontSize: 40 },
+  pagoVacioTitulo:  { fontSize: 16, fontWeight: '800', color: '#6D5A62' },
+  pagoVacioDesc:    { fontSize: 13, color: '#9D8189', textAlign: 'center', lineHeight: 19, opacity: 0.8, paddingHorizontal: 8 },
+  pagoVacioBtn:     { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#9D818920', borderRadius: 99, paddingHorizontal: 16, paddingVertical: 8, marginTop: 4 },
+  pagoVacioBtnTxt:  { fontSize: 13, fontWeight: '700', color: '#9D8189' },
+  pagoCard:         { backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: 16, padding: 12, gap: 6, borderWidth: 1, borderColor: '#9D818920' },
+  pagoCardUrgente:  { borderColor: '#F4ACB7', backgroundColor: '#FFF5F7' },
+  pagoCardCompleto: { borderColor: '#85A89E40', backgroundColor: '#F0F9F4' },
+  pagoCardHead:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  pagoNombre:       { fontSize: 14, fontWeight: '800', color: '#6D5A62' },
+  pagoFecha:        { fontSize: 12, fontWeight: '600', color: '#9D8189', opacity: 0.7 },
+  pagoCardFoot:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  pagoAhorrado:     { fontSize: 12, color: '#9D8189', fontWeight: '600' },
+  pagoMensual:      { fontSize: 12, fontWeight: '800', color: '#9D8189' },
+  pagoCompleto:     { fontSize: 12, fontWeight: '800', color: '#85A89E' },
+  pagoMsg:          { fontSize: 11, color: '#9D8189', opacity: 0.75 },
+  pagoActions:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
+  pagoAbonarBtn:    { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#9D818915', borderRadius: 99, paddingHorizontal: 12, paddingVertical: 6 },
+  pagoAbonarTxt:    { fontSize: 12, fontWeight: '700', color: '#9D8189' },
+  pagoEliminarBtn:  { padding: 6 },
+  // Modal pagos anuales
+  modalOverlay:     { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)' },
+  modalSheet:       { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#fff', borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, paddingBottom: 40, elevation: 20 },
+  modalHandle:      { width: 48, height: 5, backgroundColor: '#D8E2DC', borderRadius: 99, alignSelf: 'center', marginBottom: 20 },
+  modalTitulo:      { fontSize: 20, fontWeight: '800', color: '#9D8189', marginBottom: 4 },
+  modalDesc:        { fontSize: 13, color: '#9D8189', opacity: 0.7, marginBottom: 20, lineHeight: 19 },
+  modalLabel:       { fontSize: 11, fontWeight: '700', color: '#9D8189', opacity: 0.7, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 },
+  modalInput:       { backgroundColor: '#FFF8F9', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12, fontSize: 15, fontWeight: '600', color: '#9D8189', marginBottom: 16, borderWidth: 1, borderColor: '#9D818930' },
+  modalInputRow:    { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  modalDolar:       { fontSize: 18, fontWeight: '700', color: '#9D8189' },
+  mesBtn:           { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99, backgroundColor: '#fff', borderWidth: 1, borderColor: '#9D818930' },
+  mesBtnActive:     { backgroundColor: '#9D8189', borderColor: '#9D8189' },
+  mesBtnTxt:        { fontSize: 12, fontWeight: '600', color: '#9D818980' },
+  mesBtnTxtActive:  { color: '#fff', fontWeight: '800' },
+  modalPreview:     { backgroundColor: '#9D818915', borderRadius: 12, padding: 12, marginBottom: 16 },
+  modalPreviewTxt:  { fontSize: 13, color: '#9D8189', fontWeight: '600', textAlign: 'center' },
+  modalBtn:         { backgroundColor: '#9D8189', borderRadius: 16, paddingVertical: 16, alignItems: 'center' },
+  modalBtnTxt:      { color: '#fff', fontWeight: '800', fontSize: 15 },
+  headerRight:   { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  emergenciaBtn: {
+    width: 36, height: 36, borderRadius: 10,
+    backgroundColor: '#FFF0F4', alignItems: 'center',
+    justifyContent: 'center', borderWidth: 1, borderColor: '#FFCAD430',
+  },
   flowerBadge: { position: 'absolute', bottom: -4, right: -4, backgroundColor: '#fff', borderRadius: 99, paddingHorizontal: 5, paddingVertical: 1, elevation: 4, borderWidth: 1, borderColor: '#F3C57C40' },
   flowerBadgeTxt: { fontSize: 9, fontWeight: '800', color: '#E8963B' },
   sc: { flex: 1, paddingHorizontal: 24, paddingTop: 8, zIndex: 10 },

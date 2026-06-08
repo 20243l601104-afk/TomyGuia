@@ -10,10 +10,17 @@ const KEYS = {
   HOUSING:         'tomy_housing',
   TRANSPORT:       'tomy_transport',
   PROFILE:         'tomy_profile',
-  EXPENSES:        'tomy_expenses',
-  PAID_BILLS:      'tomy_paid_bills',
+  // Dashboard — datos del mes actual
+  DASHBOARD_MONTH:       'tomy_dashboard_month',    // 'YYYY-MM' del último guardado
+  DASHBOARD_NEEDS:       'tomy_dashboard_needs',
+  DASHBOARD_WANTS:       'tomy_dashboard_wants',
+  DASHBOARD_EF:          'tomy_dashboard_ef',
+  DASHBOARD_EXPS:        'tomy_dashboard_exps',
+  DASHBOARD_PAID_BILLS:  'tomy_dashboard_paid_bills',
+  DASHBOARD_BANK:        'tomy_dashboard_bank',
 };
 
+// ─── Onboarding ───────────────────────────────────────
 export async function saveOnboardingData(data: {
   fixedExpenses: any[];
   totalBalance: number;
@@ -54,6 +61,7 @@ export async function loadOnboardingData() {
   };
 }
 
+// ─── Perfil ───────────────────────────────────────────
 export async function saveProfile(profile: any) {
   await AsyncStorage.setItem(KEYS.PROFILE, JSON.stringify(profile));
 }
@@ -63,6 +71,7 @@ export async function loadProfile() {
   return raw ? JSON.parse(raw) : null;
 }
 
+// ─── Sesión ───────────────────────────────────────────
 export async function saveLoggedIn() {
   await AsyncStorage.setItem(KEYS.LOGGED_IN, 'true');
 }
@@ -70,6 +79,72 @@ export async function saveLoggedIn() {
 export async function isLoggedIn() {
   const val = await AsyncStorage.getItem(KEYS.LOGGED_IN);
   return val === 'true';
+}
+
+// ─── Dashboard — guardar estado del mes ──────────────
+export async function saveDashboardState(state: {
+  needsBudget: number;
+  wantsBudget: number;
+  ef: number;
+  exps: any[];
+  paidBills: any[];
+  bank: any | null;
+}) {
+  const month = getCurrentMonth();
+  await AsyncStorage.multiSet([
+    [KEYS.DASHBOARD_MONTH,      month],
+    [KEYS.DASHBOARD_NEEDS,      String(state.needsBudget)],
+    [KEYS.DASHBOARD_WANTS,      String(state.wantsBudget)],
+    [KEYS.DASHBOARD_EF,         String(state.ef)],
+    [KEYS.DASHBOARD_EXPS,       JSON.stringify(state.exps)],
+    [KEYS.DASHBOARD_PAID_BILLS, JSON.stringify(state.paidBills)],
+    [KEYS.DASHBOARD_BANK,       JSON.stringify(state.bank)],
+  ]);
+}
+
+// ─── Dashboard — cargar estado ───────────────────────
+export async function loadDashboardState(initial50: number, initial30: number, initial20: number) {
+  const [month, needs, wants, ef, exps, paidBills, bank] = await Promise.all([
+    AsyncStorage.getItem(KEYS.DASHBOARD_MONTH),
+    AsyncStorage.getItem(KEYS.DASHBOARD_NEEDS),
+    AsyncStorage.getItem(KEYS.DASHBOARD_WANTS),
+    AsyncStorage.getItem(KEYS.DASHBOARD_EF),
+    AsyncStorage.getItem(KEYS.DASHBOARD_EXPS),
+    AsyncStorage.getItem(KEYS.DASHBOARD_PAID_BILLS),
+    AsyncStorage.getItem(KEYS.DASHBOARD_BANK),
+  ]);
+
+  const currentMonth = getCurrentMonth();
+  const isSameMonth  = month === currentMonth;
+
+  if (!month || !isSameMonth) {
+    // Mes nuevo o primera vez — resetear gastos pero mantener ef acumulado
+    return {
+      needsBudget: initial50,
+      wantsBudget: initial30,
+      ef:          ef ? Number(ef) : initial20, // mantener fondo de emergencia
+      exps:        [],
+      paidBills:   [],
+      bank:        bank ? JSON.parse(bank) : null,
+      isNewMonth:  true,
+    };
+  }
+
+  return {
+    needsBudget: needs ? Number(needs) : initial50,
+    wantsBudget: wants ? Number(wants) : initial30,
+    ef:          ef    ? Number(ef)    : initial20,
+    exps:        exps  ? JSON.parse(exps) : [],
+    paidBills:   paidBills ? JSON.parse(paidBills) : [],
+    bank:        bank  ? JSON.parse(bank) : null,
+    isNewMonth:  false,
+  };
+}
+
+// ─── Helpers ──────────────────────────────────────────
+function getCurrentMonth() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
 export async function clearAll() {
