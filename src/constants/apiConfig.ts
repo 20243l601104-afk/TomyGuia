@@ -1,4 +1,4 @@
-export const STT_API_KEY = process.env.STT_API_KEY || '';
-export const STT_URL = 'https://api.deepgram.com/v1/listen?language=es&model=nova-2&punctuate=true';
-export const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
-export const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+export const STT_API_KEY = process.env.EXPO_PUBLIC_STT_API_KEY || '';
+export const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
+export const STT_URL = 'https://api.deepgram.com/v1/listen';
+export const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';

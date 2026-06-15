@@ -85,7 +85,6 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
   const [newPagoMonto, setNewPagoMonto] = useState('');
   const [newPagoMes, setNewPagoMes] = useState(new Date().getMonth() + 2 > 12 ? 1 : new Date().getMonth() + 2);
   const [showCierreMes, setShowCierreMes] = useState(false);
-  const [showEmergency, setShowEmergency] = useState(false);
   const [sobranteCierre, setSobranteCierre] = useState({ needs: 0, wants: 0 });
   const [showAbonar, setShowAbonar] = useState(false);
   const [abonarPagoId, setAbonarPagoId] = useState<string | null>(null);
@@ -544,7 +543,6 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
       </Modal>
 
       {/* ══ MODAL: EMERGENCIA ══ */}
-      <EmergencyModal visible={showEmergency} onClose={() => setShowEmergency(false)} />
 
       {/* ══ MODAL: CIERRE DE MES ══ */}
       <Modal visible={showCierreMes} transparent animationType="fade" onRequestClose={() => setShowCierreMes(false)}>

@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView } from 'react-native';
+import { Audio } from 'expo-av';
 import { useAudioRecorder, RecordingPresets } from 'expo-audio';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, NEEDS_KEYWORDS, WANTS_KEYWORDS } from '../constants';
@@ -162,11 +163,17 @@ export function BottomChat({ onIncomeAdded, onExpenseAdded, onBillPaid, fixedExp
 
   const startRecording = async () => {
     try {
+      const { status } = await Audio.requestPermissionsAsync();
+      if (status !== 'granted') {
+        showFeedback('❌ Permiso de micrófono denegado');
+        return;
+      }
       await audioRecorder.prepareToRecordAsync();
-      audioRecorder.record();
+      await audioRecorder.record();
       showFeedback('🎙️ Grabando...');
     } catch (err) {
-      showFeedback('❌ Error al grabar');
+      console.error('Recording error:', err);
+      showFeedback('❌ Error al grabar: ' + (err?.message || 'Desconocido'));
     }
   };
 
@@ -178,9 +185,16 @@ export function BottomChat({ onIncomeAdded, onExpenseAdded, onBillPaid, fixedExp
       if (!uri) { showFeedback('❌ Sin audio'); setIsTranscribing(false); return; }
       if (!STT_API_KEY) { showFeedback('⚠️ Configura Deepgram'); setIsTranscribing(false); return; }
 
-      const audioResponse = await fetch(uri);
-      const audioBlob = await audioResponse.blob();
+      const FileSystem = require('expo-file-system').default;
+      const audioBase64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+      const binaryString = atob(audioBase64);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      const audioBlob = new Blob([bytes], { type: 'audio/m4a' });
 
+      console.log('Enviando audio a Deepgram...');
       const response = await fetch(
         'https://api.deepgram.com/v1/listen?language=es&model=nova-2&punctuate=true',
         {
@@ -193,7 +207,12 @@ export function BottomChat({ onIncomeAdded, onExpenseAdded, onBillPaid, fixedExp
         }
       );
 
+      if (!response.ok) {
+        console.error('Deepgram error:', response.status, response.statusText);
+        throw new Error(`Deepgram: ${response.statusText}`);
+      }
       const data = await response.json();
+      console.log('Deepgram response:', data);
       const transcript = data?.results?.channels?.[0]?.alternatives?.[0]?.transcript || '';
       if (transcript) {
         setText(transcript);

@@ -9,8 +9,8 @@ import { ProfileScreen } from './src/screens/ProfileScreen';
 import { AuthScreen } from './src/screens/AuthScreen';
 import { LegalScreen } from './src/screens/LegalScreen';
 import { AcademiaScreen } from './src/screens/AcademiaScreen';
-import { TutorialScreen } from './src/screens/TutorialScreen';
 import { BottomNav, NavTab } from './src/components/BottomNav';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   saveOnboardingData, loadOnboardingData,
   saveProfile, loadProfile,
@@ -18,7 +18,7 @@ import {
 } from './src/services/storage';
 import type { FixedExpenseSeed, UserProfile } from './src/types';
 
-type AppView = 'loading' | 'auth' | 'onboarding' | 'tutorial' | 'main';
+type AppView = 'loading' | 'auth' | 'onboarding' | 'main';
 
 const DEFAULT_PROFILE: UserProfile = {
   name: '',
@@ -82,17 +82,15 @@ export default function App() {
     setProfile(updated);
     await saveProfile(updated);
     await saveLoggedIn();
-    const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
-    const vioTutorial = await AsyncStorage.getItem('tomy_tutorial_done');
-    setView(vioTutorial ? 'main' : 'tutorial');
+    
+    setView('main');
   };
 
   const handleSkipLogin = async () => {
     await saveLoggedIn();
     // Verificar si ya vio el tutorial
-    const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
-    const vioTutorial = await AsyncStorage.getItem('tomy_tutorial_done');
-    setView(vioTutorial ? 'main' : 'tutorial');
+    
+    setView('main');
   };
 
   const handleProfileSave = async (updated: UserProfile) => {
@@ -120,19 +118,6 @@ export default function App() {
   }
 
   if (view === 'onboarding') return <OnboardingScreen onComplete={handleOnboardingComplete} />;
-
-  if (view === 'tutorial') return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <StatusBar style="dark" />
-        <TutorialScreen onFinish={async () => {
-          const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
-          await AsyncStorage.setItem('tomy_tutorial_done', 'true');
-          setView('main');
-        }} />
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
-  );
 
   if (view === 'auth') return (
     <GestureHandlerRootView style={{ flex: 1 }}>

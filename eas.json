@@ -10,8 +10,19 @@
       },
       "env": {
         "NPM_CONFIG_LEGACY_PEER_DEPS": "true",
-        "STT_API_KEY": "be914d5bd088f65a74be52d72d53d2ce6feafa88",
-        "GEMINI_API_KEY": "TU_GEMINI_KEY_AQUI"
+        "STT_API_KEY": "62461b4c72d9d13bbeac318164ad644df2e5379e",
+        "GEMINI_API_KEY": "AQ.Ab8RN6LkaFpStIAJa4IcFEFf8bvrD4GHJHN1PQeTlHl4naf2wg"
+      }
+    },
+    "production": {
+      "android": {
+        "buildType": "apk",
+        "image": "ubuntu-22.04-jdk-17-ndk-r26b"
+      },
+      "env": {
+        "NPM_CONFIG_LEGACY_PEER_DEPS": "true",
+        "STT_API_KEY": "62461b4c72d9d13bbeac318164ad644df2e5379e",
+        "GEMINI_API_KEY": "AQ.Ab8RN6LkaFpStIAJa4IcFEFf8bvrD4GHJHN1PQeTlHl4naf2wg"
       }
     }
   }
