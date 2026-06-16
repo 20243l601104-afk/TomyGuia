@@ -6,8 +6,6 @@ import { CalendarWidget } from '../components/CalendarWidget';
 import { BottomChat } from '../components/BottomChat';
 import { BankConnectModal } from '../components/BankConnectModal';
 import { configurarNotificaciones } from '../services/notifications';
-const CEMPASUCHIL = require('../../assets/cempasuchil.png');
-
 import { TomasaSVG } from '../components/TomasaSVG';
 import { FloatingAssistant } from '../components/FloatingAssistant';
 import type { FixedExpenseSeed, FixedExpense, Expense, ConnectedBank, BankTransaction, UserProfile } from '../types';
@@ -279,7 +277,7 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
             <View style={s.incognito}><TomasaSVG size={32} floating={false} /></View>
           )}
           <View style={s.flowerBadge}>
-              <Image source={CEMPASUCHIL} style={{ width: 12, height: 12 }} resizeMode="contain" />
+              <Text style={{ fontSize: 12, color: '#E8963B' }}>*</Text>
               <Text style={s.flowerBadgeTxt}>{profile.flowers}</Text>
             </View>
           </TouchableOpacity>

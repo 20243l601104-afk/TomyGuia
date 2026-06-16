@@ -14,7 +14,7 @@ const C = { ROSA: '#F4ACB7', CLARO: '#FFCAD4', MELON: '#FFE5D9', MENTA: '#D8E2DC
 /* ─── Flor de cempasúchil PNG ─── */
 function CempasuchilFlower({ size = 28, opacity = 1 }: { size?: number; opacity?: number }) {
  return (
- <Image source={CEMPASUCHIL} style={{ width: size, height: size, opacity }} resizeMode="contain" />
+ <Text style={{ fontSize: size * 0.8, opacity }}>&#x1F33C;</Text>
  );
 }
 
@@ -226,7 +226,7 @@ export function ProfileScreen({ profile, onSave, onBack }: Props) {
  <View>
  <Text style={s.label}>FLORES Y NIVEL</Text>
  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
- <Image source={CEMPASUCHIL} style={{ width: 22, height: 22 }} resizeMode="contain" />
+ <Text style={{ fontSize: 18 }}>&#x1F33C;</Text>
  <Text style={{ fontSize: 24, fontWeight: '800', color: '#E8963B' }}>{profile.flowers}</Text>
  <Text style={{ fontSize: 12, color: '#9D8189' }}>flores</Text>
  </View>
