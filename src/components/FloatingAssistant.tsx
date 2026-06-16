@@ -20,8 +20,7 @@ function getMood(message: AssistantMessage | null): TomasaMood {
  switch (message.type) {
  case 'celebration': return 'happy';
  case 'warning': return 'worried';
- case 'alert': return 'alert';
- case 'sad': return 'sad';
+ case 'warning': return 'worried';
  default: return 'neutral';
  }
 }
@@ -94,7 +93,7 @@ export function FloatingAssistant({
  if (!message) return null;
 
  const mood = getMood(message);
- const isWarning = message.type === 'warning' || message.type === 'alert';
+ const isWarning = message.type === 'warning';
  const isCelebration = message.type === 'celebration';
  const bubbleColor = isWarning ? '#FFF0F0' : isCelebration ? '#F0F9F4' : '#FFFFFF';
  const borderColor = isWarning ? '#FFB3B3' : isCelebration ? '#A8D5B5' : '#FFCAD4';

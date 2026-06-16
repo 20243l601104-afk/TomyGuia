@@ -104,6 +104,28 @@ FORMATO DE RESPUESTA:
 IMPORTANTE: Responde SIEMPRE en español. Nunca uses códigos unicode como \U0001f... — usa los emojis directamente.`;
 
 // ─── PREGUNTAS FRECUENTES ────────────────────────────
+
+function buildSystemPrompt(opts: {
+  nombre?: string;
+  renta?: boolean;
+  tieneCarro?: boolean;
+  monthlyIncome?: number;
+  docsEnBoveda?: string[];
+  tramitesCompletados?: string[];
+}): string {
+  const { nombre, renta, tieneCarro, monthlyIncome = 0, docsEnBoveda = [], tramitesCompletados = [] } = opts;
+  const perfil = [
+    nombre ? 'Se llama ' + nombre + '.' : '',
+    renta ? 'Renta su vivienda.' : 'Es propietaria de su vivienda.',
+    tieneCarro ? 'Tiene automovil.' : 'No tiene automovil.',
+    monthlyIncome > 0 ? 'Ingreso mensual: $' + monthlyIncome.toLocaleString('es-MX') + ' pesos.' : '',
+    docsEnBoveda.length > 0 ? 'Documentos en boveda: ' + docsEnBoveda.join(', ') + '.' : 'Sin documentos en boveda aun.',
+    tramitesCompletados.length > 0 ? 'Tramites completados: ' + tramitesCompletados.join(', ') + '.' : 'Sin tramites completados aun.',
+  ].filter(Boolean).join(' ');
+
+  return SYSTEM_PROMPT + '\n\nPERFIL DE LA USUARIA:\n' + perfil + '\n\nUsa este perfil para personalizar tus respuestas y sugerir los tramites mas relevantes para ella.';
+}
+
 const CHIPS = [
  '¿Cómo saco el RFC?',
  '¿Cuáles son mis derechos laborales?',

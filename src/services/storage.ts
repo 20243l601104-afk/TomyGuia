@@ -18,6 +18,7 @@ const KEYS = {
   DASHBOARD_EXPS:        'tomy_dashboard_exps',
   DASHBOARD_PAID_BILLS:  'tomy_dashboard_paid_bills',
   DASHBOARD_BANK:        'tomy_dashboard_bank',
+  DASHBOARD_PAGOS:       'tomy_dashboard_pagos',
 };
 
 // ─── Onboarding ───────────────────────────────────────
@@ -89,6 +90,7 @@ export async function saveDashboardState(state: {
   exps: any[];
   paidBills: any[];
   bank: any | null;
+  pagosAnuales?: any[];
 }) {
   const month = getCurrentMonth();
   await AsyncStorage.multiSet([
@@ -99,12 +101,13 @@ export async function saveDashboardState(state: {
     [KEYS.DASHBOARD_EXPS,       JSON.stringify(state.exps)],
     [KEYS.DASHBOARD_PAID_BILLS, JSON.stringify(state.paidBills)],
     [KEYS.DASHBOARD_BANK,       JSON.stringify(state.bank)],
+    [KEYS.DASHBOARD_PAGOS,      JSON.stringify(state.pagosAnuales || [])],
   ]);
 }
 
 // ─── Dashboard — cargar estado ───────────────────────
 export async function loadDashboardState(initial50: number, initial30: number, initial20: number) {
-  const [month, needs, wants, ef, exps, paidBills, bank] = await Promise.all([
+  const [month, needs, wants, ef, exps, paidBills, bank, pagos] = await Promise.all([
     AsyncStorage.getItem(KEYS.DASHBOARD_MONTH),
     AsyncStorage.getItem(KEYS.DASHBOARD_NEEDS),
     AsyncStorage.getItem(KEYS.DASHBOARD_WANTS),
@@ -112,6 +115,7 @@ export async function loadDashboardState(initial50: number, initial30: number, i
     AsyncStorage.getItem(KEYS.DASHBOARD_EXPS),
     AsyncStorage.getItem(KEYS.DASHBOARD_PAID_BILLS),
     AsyncStorage.getItem(KEYS.DASHBOARD_BANK),
+    AsyncStorage.getItem(KEYS.DASHBOARD_PAGOS),
   ]);
 
   const currentMonth = getCurrentMonth();
@@ -126,6 +130,7 @@ export async function loadDashboardState(initial50: number, initial30: number, i
       exps:        [],
       paidBills:   [],
       bank:        bank ? JSON.parse(bank) : null,
+      pagosAnuales: pagos ? JSON.parse(pagos) : [],
       isNewMonth:  true,
     };
   }

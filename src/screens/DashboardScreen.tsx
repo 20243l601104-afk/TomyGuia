@@ -5,11 +5,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CalendarWidget } from '../components/CalendarWidget';
 import { BottomChat } from '../components/BottomChat';
 import { BankConnectModal } from '../components/BankConnectModal';
+import { configurarNotificaciones } from '../services/notifications';
 const CEMPASUCHIL = require('../../assets/cempasuchil.png');
 
 import { TomasaSVG } from '../components/TomasaSVG';
 import { FloatingAssistant } from '../components/FloatingAssistant';
 import type { FixedExpenseSeed, FixedExpense, Expense, ConnectedBank, BankTransaction, UserProfile } from '../types';
+import { loadDashboardState, saveDashboardState } from '../services/storage';
 
 interface Props {
   emergencyFundGoal: number;
@@ -48,7 +50,7 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
   /* ─── Fondo de emergencia ─── */
   const ep = emergencyFundGoal > 0 ? Math.min((ef / emergencyFundGoal) * 100, 100) : 0;
   const me = emergencyFundGoal > 0 ? emergencyFundGoal / 3 : 0;
-  const mp = me > 0 ? (ef / me).toFixed(1) : '0';
+  const mp = me > 0 ? parseFloat((ef / me).toFixed(1)) : 0;
 
   /* ─── Logros del fondo de emergencia (fuera del render para evitar el error) ─── */
   useEffect(() => {
@@ -93,6 +95,15 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
   const [abonarMonto, setAbonarMonto] = useState('');
 
   // ── Cargar estado guardado al montar ──────────────────
+  // Configurar notificaciones al cargar
+  useEffect(() => {
+    if (seedExpenses.length > 0) {
+      configurarNotificaciones(
+        fel.map((e: import('../types').FixedExpense) => ({ title: e.title, amount: e.amount, day: e.day }))
+      ).catch(() => {});
+    }
+  }, [seedExpenses]);
+
   useEffect(() => {
     const load = async () => {
       const saved = await loadDashboardState(initial50, initial30, initial20);
@@ -122,6 +133,16 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
     load();
   }, []);
 
+  /* ─── Banco ─── */
+  const [bmo, setBmo] = useState(false);
+  const [cb, setCb] = useState<ConnectedBank | null>(null);
+  const onBC = useCallback((bank: ConnectedBank, txs: BankTransaction[]) => {
+    setCb(bank);
+    setExps(p => [...p, ...txs]);
+    const im = txs.reduce((a, b) => a + b.amount, 0);
+    setWantsBudget(p => Math.max(0, p - im));
+  }, []);
+
   // ── Guardar estado cuando cambia algo ─────────────────
   useEffect(() => {
     if (!dataLoaded) return; // no guardar antes de cargar
@@ -144,16 +165,6 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
   const moneyPct = pendingBillsAmount > 0
     ? Math.min(Math.round((needsBudget / pendingBillsAmount) * 100), 100)
     : 100;
-
-  /* ─── Banco ─── */
-  const [bmo, setBmo] = useState(false);
-  const [cb, setCb] = useState<ConnectedBank | null>(null);
-  const onBC = useCallback((bank: ConnectedBank, txs: BankTransaction[]) => {
-    setCb(bank);
-    setExps(p => [...p, ...txs]);
-    const im = txs.reduce((a, b) => a + b.amount, 0);
-    setWantsBudget(p => Math.max(0, p - im));
-  }, []);
 
   /* ─── Gasto desde el chat ─── */
   const firstExpenseTracked = useRef(false);
@@ -756,7 +767,7 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
         emergencyFund={ef}
         fixedExpenses={fel}
         paidBills={paidBills}
-        recentActivityCount={exps.filter(e => Date.now() - e.id < 2 * 60 * 60 * 1000).length}
+
       />     
  <BankConnectModal isOpen={bmo} onClose={() => setBmo(false)} onConnected={onBC} />
     </KeyboardAvoidingView>

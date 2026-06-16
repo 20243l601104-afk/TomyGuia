@@ -10,6 +10,24 @@ import { BELVO_SECRET_ID, BELVO_SECRET_KEY } from '../constants/apiConfig';
 
 const BELVO_ENV = 'sandbox';
 
+// btoa no existe en Hermes/React Native — implementacion propia
+function toBase64(str: string): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+  let output = '';
+  let i = 0;
+  while (i < str.length) {
+    const c1 = str.charCodeAt(i++);
+    const c2 = str.charCodeAt(i++);
+    const c3 = str.charCodeAt(i++);
+    const e1 = c1 >> 2;
+    const e2 = ((c1 & 3) << 4) | (c2 >> 4);
+    const e3 = isNaN(c2) ? 64 : ((c2 & 15) << 2) | (c3 >> 6);
+    const e4 = isNaN(c3) ? 64 : c3 & 63;
+    output += chars[e1] + chars[e2] + chars[e3] + chars[e4];
+  }
+  return output;
+}
+
 interface Props {
   isOpen: boolean;
   onClose: () => void;
@@ -31,7 +49,7 @@ export function BankConnectModal({ isOpen, onClose, onConnected }: Props) {
     try {
       // Belvo Widget necesita el access token via POST a /api/token/
       // con autenticacion Basic usando Secret-ID:Secret-Key
-      const credentials = btoa(`${BELVO_SECRET_ID}:${BELVO_SECRET_KEY}`);
+      const credentials = toBase64(BELVO_SECRET_ID + ':' + BELVO_SECRET_KEY);
       const res = await fetch('https://sandbox.belvo.com/api/token/', {
         method: 'POST',
         headers: {
@@ -71,7 +89,7 @@ export function BankConnectModal({ isOpen, onClose, onConnected }: Props) {
   const obtenerTransacciones = async (newLinkId: string) => {
     setStep('fetching');
     try {
-      const credentials = btoa(`${BELVO_SECRET_ID}:${BELVO_SECRET_KEY}`);
+      const credentials = toBase64(BELVO_SECRET_ID + ':' + BELVO_SECRET_KEY);
 
       // Obtener info de la cuenta
       const accRes = await fetch(
@@ -227,6 +245,9 @@ export function BankConnectModal({ isOpen, onClose, onConnected }: Props) {
             onMessage={handleWebViewMessage}
             javaScriptEnabled
             domStorageEnabled
+            allowUniversalAccessFromFileURLs
+            mixedContentMode="always"
+            originWhitelist={['*']}
             style={{ flex: 1 }}
           />
         </View>
