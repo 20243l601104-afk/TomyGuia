@@ -4,7 +4,7 @@ import { Audio } from 'expo-av';
 import { useAudioRecorder, RecordingPresets } from 'expo-audio';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, NEEDS_KEYWORDS, WANTS_KEYWORDS } from '../constants';
-import { STT_API_KEY, STT_URL } from '../constants/apiConfig';
+import { STT_API_KEY, STT_URL, GEMINI_API_KEY, GEMINI_API_URL } from '../constants/apiConfig';
 import { IncomeAllocationModal } from './IncomeModal';
 import type { Allocation, FixedExpenseSeed } from '../types';
 
@@ -90,6 +90,8 @@ interface Props {
   onBillPaid?: (expenseId: string, title: string, amount: number) => void;
   fixedExpenses?: FixedExpenseSeed[];
   currentNeeds: number; currentWants: number; currentSavings: number; totalBalance: number;
+  monthlyIncome?: number;
+  userName?: string;
 }
 
 const CHIPS = [
@@ -99,7 +101,7 @@ const CHIPS = [
   { label: '+ $100 Venta', type: 'income' },
 ];
 
-export function BottomChat({ onIncomeAdded, onExpenseAdded, onBillPaid, fixedExpenses = [], currentNeeds, currentWants, currentSavings, totalBalance }: Props) {
+export function BottomChat({ onIncomeAdded, onExpenseAdded, onBillPaid, fixedExpenses = [], currentNeeds, currentWants, currentSavings, totalBalance, monthlyIncome = 0, userName = '' }: Props) {
   const [text, setText] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
@@ -117,63 +119,105 @@ export function BottomChat({ onIncomeAdded, onExpenseAdded, onBillPaid, fixedExp
     setTimeout(() => setFeedback(null), 3500);
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!text.trim()) return;
     const msg = text.trim();
     setText(''); setIsFocused(false); setIsTyping(true);
-    setTimeout(() => {
+
+    // Intentar primero con parser local (rapido, sin red)
+    const amount = parseAmount(msg);
+    const intent = detectIntent(msg);
+
+    // Intents que no necesitan IA
+    if (intent === 'income' && amount > 0) {
       setIsTyping(false);
-      const amount = parseAmount(msg);
-      const intent = detectIntent(msg);
-      switch (intent) {
-        case 'income':
-          if (amount <= 0) { showFeedback('🤔 No entendí el monto'); return; }
-          setIncomeAmount(amount); setShowModal(true);
-          break;
-        case 'bill': {
-          const bill = detectBill(msg, fixedExpenses);
-          if (bill && onBillPaid) {
-            const billAmount = amount > 0 ? amount : bill.amount;
-            onBillPaid(bill.id, bill.title, billAmount);
-            showFeedback(`✅ Pagaste ${bill.title}: $${billAmount.toLocaleString('es-MX')}`);
-          } else if (amount > 0 && onExpenseAdded) {
-            onExpenseAdded(amount, 'needs', extractLabel(msg));
-            showFeedback(`✅ Necesidad: $${amount.toLocaleString('es-MX')}`);
-          } else {
-            showFeedback('🤔 No encontré ese recibo');
-          }
-          break;
-        }
-        case 'expense':
-          if (amount <= 0) { showFeedback('🤔 No entendí el monto'); return; }
-          if (onExpenseAdded) {
-            const cat = detectCategory(msg);
-            onExpenseAdded(amount, cat, extractLabel(msg));
-            showFeedback(`✅ ${cat === 'needs' ? 'Necesidad' : 'Gusto'}: $${amount.toLocaleString('es-MX')}`);
-          }
-          break;
-        case 'query':
-          showFeedback(`💰 Balance: $${totalBalance.toLocaleString('es-MX')}`);
-          break;
-        default:
-          showFeedback('🤔 Prueba: "Gasté quinientos en café"');
+      setIncomeAmount(amount); setShowModal(true);
+      return;
+    }
+    if (intent === 'bill') {
+      const bill = detectBill(msg, fixedExpenses);
+      if (bill && onBillPaid) {
+        const billAmount = amount > 0 ? amount : bill.amount;
+        onBillPaid(bill.id, bill.title, billAmount);
+        setIsTyping(false);
+        showFeedback(`Pagaste ${bill.title}: $${billAmount.toLocaleString('es-MX')}`);
+        return;
       }
-    }, 800);
+    }
+    if (intent === 'query') {
+      setIsTyping(false);
+      showFeedback(`Balance: $${totalBalance.toLocaleString('es-MX')} | Necesidades: $${currentNeeds.toLocaleString('es-MX')} | Gustos: $${currentWants.toLocaleString('es-MX')}`);
+      return;
+    }
+
+    // Para gastos y mensajes ambiguos — usar Gemini para entender
+    try {
+      const contexto = `Saldo total: $${totalBalance.toLocaleString('es-MX')}. Presupuesto necesidades: $${currentNeeds.toLocaleString('es-MX')}. Presupuesto gustos: $${currentWants.toLocaleString('es-MX')}. Ahorro: $${currentSavings.toLocaleString('es-MX')}. Ingreso mensual: $${monthlyIncome.toLocaleString('es-MX')}.${userName ? ' Nombre: ' + userName + '.' : ''}`;
+
+      const systemPrompt = 'Eres el asistente de finanzas de TomyGuia. Analiza el mensaje y responde SOLO con JSON valido sin markdown. Formato exacto: {"intent":"expense|income|bill|query|unknown","amount":0,"category":"needs|wants","label":"texto","feedback":"texto"} Contexto: ' + contexto + ' Reglas: intent expense=gasto, income=cobro, bill=recibo fijo, query=consulta saldo, unknown=otro. category needs=renta/comida/salud/transporte, wants=entretenimiento/ropa/lujos. label=1-3 palabras. feedback=frase corta sin emojis max 50 chars.';
+
+      const res = await fetch(GEMINI_API_URL + '?key=' + GEMINI_API_KEY, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: systemPrompt }] },
+          contents: [{ role: 'user', parts: [{ text: msg }] }],
+          generationConfig: { maxOutputTokens: 150, temperature: 0.1 },
+        }),
+      });
+
+      const data = await res.json();
+      const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const clean = raw.replace(/```json|```/g, '').trim();
+      const parsed = JSON.parse(clean);
+
+      setIsTyping(false);
+
+      if (parsed.intent === 'expense' && parsed.amount > 0 && onExpenseAdded) {
+        onExpenseAdded(parsed.amount, parsed.category || 'wants', parsed.label || msg);
+        showFeedback(parsed.feedback || 'Registrado: $' + parsed.amount.toLocaleString('es-MX'));
+      } else if (parsed.intent === 'income' && parsed.amount > 0) {
+        setIncomeAmount(parsed.amount); setShowModal(true);
+      } else if (parsed.intent === 'bill' && onBillPaid) {
+        const bill = detectBill(msg, fixedExpenses);
+        if (bill) {
+          onBillPaid(bill.id, bill.title, parsed.amount || bill.amount);
+          showFeedback(parsed.feedback || 'Pagado: ' + bill.title);
+        } else if (parsed.amount > 0 && onExpenseAdded) {
+          onExpenseAdded(parsed.amount, 'needs', parsed.label || msg);
+          showFeedback(parsed.feedback || 'Necesidad registrada: $' + parsed.amount.toLocaleString('es-MX'));
+        }
+      } else if (parsed.intent === 'query') {
+        showFeedback('Balance: $' + totalBalance.toLocaleString('es-MX'));
+      } else {
+        showFeedback('Escribe algo como: gaste 200 en super');
+      }
+    } catch {
+      // Fallback al parser local si Gemini falla
+      setIsTyping(false);
+      if (amount > 0 && onExpenseAdded) {
+        const cat = detectCategory(msg);
+        onExpenseAdded(amount, cat, extractLabel(msg));
+        showFeedback((cat === 'needs' ? 'Necesidad' : 'Gusto') + ' registrado: $' + amount.toLocaleString('es-MX'));
+      } else {
+        showFeedback('Escribe algo como: gaste 200 en super');
+      }
+    }
   };
 
   const startRecording = async () => {
     try {
       const { status } = await Audio.requestPermissionsAsync();
       if (status !== 'granted') {
-        showFeedback('❌ Permiso de micrófono denegado');
+        showFeedback('Sin permiso de microfono');
         return;
       }
       await audioRecorder.prepareToRecordAsync();
       await audioRecorder.record();
-      showFeedback('🎙️ Grabando...');
+      showFeedback('Escuchando...');
     } catch (err) {
       console.error('Recording error:', err);
-      showFeedback('❌ Error al grabar: ' + (err?.message || 'Desconocido'));
+      showFeedback('Error al grabar');
     }
   };
 
@@ -182,8 +226,8 @@ export function BottomChat({ onIncomeAdded, onExpenseAdded, onBillPaid, fixedExp
     try {
       await audioRecorder.stop();
       const uri = audioRecorder.uri;
-      if (!uri) { showFeedback('❌ Sin audio'); setIsTranscribing(false); return; }
-      if (!STT_API_KEY) { showFeedback('⚠️ Configura Deepgram'); setIsTranscribing(false); return; }
+      if (!uri) { showFeedback('Sin audio'); setIsTranscribing(false); return; }
+      if (!STT_API_KEY) { showFeedback('Sin conexion de voz'); setIsTranscribing(false); return; }
 
       const FileSystem = require('expo-file-system').default;
       const audioBase64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
@@ -217,12 +261,12 @@ export function BottomChat({ onIncomeAdded, onExpenseAdded, onBillPaid, fixedExp
       if (transcript) {
         setText(transcript);
         inputRef.current?.focus();
-        showFeedback(`🎙️ "${transcript}"`);
+        showFeedback(`"${transcript}"`);
       } else {
-        showFeedback('❌ No se pudo transcribir');
+        showFeedback('No se pudo transcribir');
       }
     } catch (err) {
-      showFeedback('❌ Error de transcripción');
+      showFeedback('Error de transcripcion');
     } finally {
       setIsTranscribing(false);
     }
@@ -248,7 +292,7 @@ export function BottomChat({ onIncomeAdded, onExpenseAdded, onBillPaid, fixedExp
             <Ionicons name={isTranscribing ? 'hourglass-outline' : isRecording ? 'stop' : 'mic-outline'} size={20} color={isRecording || isTranscribing ? '#fff' : COLORS.ROSA} />
           </View>
         </TouchableOpacity>
-        <TextInput ref={inputRef} style={s.i} value={text} onChangeText={setText} onFocus={() => setIsFocused(true)} onBlur={() => setIsFocused(false)} onSubmitEditing={handleSend} placeholder={isRecording ? '🎙️ Escuchando...' : 'Ej. Gasté quinientos...'} placeholderTextColor={COLORS.MALVA + '80'} returnKeyType="send" editable={!isRecording} />
+        <TextInput ref={inputRef} style={s.i} value={text} onChangeText={setText} onFocus={() => setIsFocused(true)} onBlur={() => setIsFocused(false)} onSubmitEditing={handleSend} placeholder={isRecording ? 'Escuchando...' : 'Ej. Gaste 45 en un cafe'} placeholderTextColor={COLORS.MALVA + '80'} returnKeyType="send" editable={!isRecording} />
         <TouchableOpacity style={[s.sn, !text.trim() && { opacity: 0.3 }]} onPress={handleSend} disabled={!text.trim()}>
           <Ionicons name="send" size={20} color={COLORS.ROSA} />
         </TouchableOpacity>

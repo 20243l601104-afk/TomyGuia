@@ -1,10 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  Modal, ScrollView, ActivityIndicator
+  Modal, ActivityIndicator, Alert,
 } from 'react-native';
+import { WebView } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import type { ConnectedBank, BankTransaction } from '../types';
+import { BELVO_SECRET_ID, BELVO_SECRET_KEY } from '../constants/apiConfig';
+
+const BELVO_ENV = 'sandbox';
 
 interface Props {
   isOpen: boolean;
@@ -12,211 +16,287 @@ interface Props {
   onConnected: (bank: ConnectedBank, txs: BankTransaction[]) => void;
 }
 
-// ─── Bancos mexicanos con datos reales ───
-const BANKS = [
-  { id: 'nu',      name: 'Nu',       color: '#820AD1', last4: '4242', emoji: '💜' },
-  { id: 'bbva',    name: 'BBVA',     color: '#004481', last4: '1234', emoji: '🔵' },
-  { id: 'banorte', name: 'Banorte',  color: '#E30613', last4: '5678', emoji: '🔴' },
-  { id: 'hsbc',    name: 'HSBC',     color: '#DB0011', last4: '9012', emoji: '🏦' },
-  { id: 'santander',name: 'Santander',color: '#EC0000', last4: '3456', emoji: '🔥' },
-  { id: 'banamex', name: 'Citibanamex',color: '#056DAE',last4: '7890', emoji: '🏛️' },
-];
-
-// ─── Movimientos simulados realistas por banco ───
-const MOCK_TRANSACTIONS: Record<string, { label: string; amount: number; category: 'needs' | 'wants' }[]> = {
-  nu: [
-    { label: 'Supermercado Walmart',     amount: 850,  category: 'needs'  },
-    { label: 'Netflix',                  amount: 219,  category: 'wants'  },
-    { label: 'Spotify',                  amount: 99,   category: 'wants'  },
-    { label: 'Farmacia Guadalajara',     amount: 320,  category: 'needs'  },
-    { label: 'Starbucks',                amount: 95,   category: 'wants'  },
-    { label: 'Uber',                     amount: 145,  category: 'needs'  },
-    { label: 'Amazon',                   amount: 450,  category: 'wants'  },
-    { label: 'Oxxo',                     amount: 65,   category: 'wants'  },
-    { label: 'CFE Electricidad',         amount: 380,  category: 'needs'  },
-    { label: 'Restaurante El Tizoncito', amount: 280,  category: 'wants'  },
-  ],
-  bbva: [
-    { label: 'Chedraui',                 amount: 1200, category: 'needs'  },
-    { label: 'Telmex Internet',          amount: 499,  category: 'needs'  },
-    { label: 'Gasolinera Pemex',         amount: 600,  category: 'needs'  },
-    { label: 'Cinépolis',                amount: 230,  category: 'wants'  },
-    { label: 'Ropa Liverpool',           amount: 890,  category: 'wants'  },
-    { label: 'Mercado Libre',            amount: 350,  category: 'wants'  },
-    { label: 'DiDi',                     amount: 85,   category: 'needs'  },
-    { label: 'Tortillería',              amount: 45,   category: 'needs'  },
-    { label: 'Café Punta del Cielo',     amount: 75,   category: 'wants'  },
-    { label: 'Agua Bonafont',            amount: 120,  category: 'needs'  },
-  ],
-  banorte: [
-    { label: 'Soriana Mercado',          amount: 950,  category: 'needs'  },
-    { label: 'Recibo IMSS',              amount: 180,  category: 'needs'  },
-    { label: 'Telcel Plan',              amount: 349,  category: 'needs'  },
-    { label: 'Pizza Dominos',            amount: 195,  category: 'wants'  },
-    { label: 'Uber Eats',                amount: 165,  category: 'wants'  },
-    { label: 'Gym Sport City',           amount: 499,  category: 'wants'  },
-    { label: 'Panadería',                amount: 55,   category: 'needs'  },
-    { label: 'Papelería',                amount: 120,  category: 'needs'  },
-    { label: 'Rappi',                    amount: 210,  category: 'wants'  },
-    { label: 'Dentista',                 amount: 800,  category: 'needs'  },
-  ],
-  hsbc: [
-    { label: 'Costco',                   amount: 2100, category: 'needs'  },
-    { label: 'Izzi Internet',            amount: 399,  category: 'needs'  },
-    { label: 'Gas LP',                   amount: 350,  category: 'needs'  },
-    { label: 'McDonald\'s',              amount: 145,  category: 'wants'  },
-    { label: 'H&M Ropa',                amount: 680,  category: 'wants'  },
-    { label: 'Nintendo Switch Online',   amount: 149,  category: 'wants'  },
-    { label: 'Farmacia del Ahorro',      amount: 280,  category: 'needs'  },
-    { label: 'Mercado San Juan',         amount: 420,  category: 'needs'  },
-    { label: 'Cinema Citibanamex',       amount: 180,  category: 'wants'  },
-    { label: 'Café Americano',           amount: 55,   category: 'wants'  },
-  ],
-  santander: [
-    { label: 'Sam\'s Club',             amount: 1800, category: 'needs'  },
-    { label: 'AT&T Plan',               amount: 299,  category: 'needs'  },
-    { label: 'Gasolina Shell',           amount: 550,  category: 'needs'  },
-    { label: 'Sushi Bar',               amount: 340,  category: 'wants'  },
-    { label: 'Zara',                     amount: 790,  category: 'wants'  },
-    { label: 'Disney+',                  amount: 179,  category: 'wants'  },
-    { label: 'Vitaminas GNC',            amount: 450,  category: 'needs'  },
-    { label: 'Librería Gandhi',          amount: 280,  category: 'wants'  },
-    { label: 'Tacos El Güero',           amount: 85,   category: 'wants'  },
-    { label: 'Agua mineral',             amount: 35,   category: 'needs'  },
-  ],
-  banamex: [
-    { label: 'La Comer',                 amount: 1050, category: 'needs'  },
-    { label: 'Megacable',               amount: 449,  category: 'needs'  },
-    { label: 'Gasolinería BP',           amount: 480,  category: 'needs'  },
-    { label: 'KFC',                      amount: 175,  category: 'wants'  },
-    { label: 'Pull&Bear',               amount: 560,  category: 'wants'  },
-    { label: 'HBO Max',                  amount: 149,  category: 'wants'  },
-    { label: 'Cruz Roja Donativo',       amount: 100,  category: 'needs'  },
-    { label: 'Papelería Office Depot',   amount: 190,  category: 'needs'  },
-    { label: 'Cervecería',               amount: 220,  category: 'wants'  },
-    { label: 'Verduras mercado',         amount: 180,  category: 'needs'  },
-  ],
-};
-
-type Step = 'select' | 'connecting' | 'done' | 'error';
+type Step = 'loading' | 'widget' | 'fetching' | 'done' | 'error';
 
 export function BankConnectModal({ isOpen, onClose, onConnected }: Props) {
-  const [step, setStep]         = useState<Step>('select');
-  const [selectedBank, setSelectedBank] = useState<typeof BANKS[0] | null>(null);
+  const [step, setStep]         = useState<Step>('loading');
+  const [accessToken, setAccessToken] = useState<string>('');
+  const [linkId, setLinkId]     = useState<string>('');
+  const [errorMsg, setErrorMsg] = useState('');
+  const webviewRef = useRef<WebView>(null);
 
-  const handleReset = () => {
-    setStep('select');
-    setSelectedBank(null);
+  // ── 1. Al abrir: obtener access_token de Belvo ──────────────────────────────
+  const obtenerToken = async () => {
+    setStep('loading');
+    try {
+      // Belvo Widget necesita el access token via POST a /api/token/
+      // con autenticacion Basic usando Secret-ID:Secret-Key
+      const credentials = btoa(`${BELVO_SECRET_ID}:${BELVO_SECRET_KEY}`);
+      const res = await fetch('https://sandbox.belvo.com/api/token/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Basic ${credentials}`,
+        },
+        body: JSON.stringify({
+          id: BELVO_SECRET_ID,
+          password: BELVO_SECRET_KEY,
+          scopes: 'read_institutions,write_links,read_accounts,read_balances,read_owners',
+        }),
+      });
+
+      const text = await res.text();
+      let data: any = {};
+      try { data = JSON.parse(text); } catch {}
+
+      if (!res.ok) {
+        // Mostrar el error real de Belvo para debug
+        const msg = data.detail || data.message || `Error ${res.status}`;
+        throw new Error(msg);
+      }
+
+      if (data.access) {
+        setAccessToken(data.access);
+        setStep('widget');
+      } else {
+        throw new Error('Belvo no devolvio un token valido');
+      }
+    } catch (e: any) {
+      setErrorMsg(e.message || 'No se pudo conectar con Belvo');
+      setStep('error');
+    }
   };
 
-  const handleClose = () => {
-    handleReset();
-    onClose();
-  };
+  // ── 2. Obtener transacciones del link recién creado ──────────────────────────
+  const obtenerTransacciones = async (newLinkId: string) => {
+    setStep('fetching');
+    try {
+      const credentials = btoa(`${BELVO_SECRET_ID}:${BELVO_SECRET_KEY}`);
 
-  const handleSelectBank = (bank: typeof BANKS[0]) => {
-    setSelectedBank(bank);
-    setStep('connecting');
+      // Obtener info de la cuenta
+      const accRes = await fetch(
+        `https://sandbox.belvo.com/api/accounts/?link=${newLinkId}`,
+        { headers: { 'Authorization': `Basic ${credentials}` } }
+      );
+      const accData = await accRes.json();
+      const cuenta = accData.results?.[0];
 
-    // Simular tiempo de conexión bancaria
-    setTimeout(() => {
-      const txs = MOCK_TRANSACTIONS[bank.id] || [];
-      const connectedBank: ConnectedBank = {
-        id: bank.id,
-        name: bank.name,
-        color: bank.color,
-        last4: bank.last4,
+      // Obtener transacciones del mes actual
+      const hoy = new Date();
+      const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
+        .toISOString().split('T')[0];
+      const finMes = hoy.toISOString().split('T')[0];
+
+      const txRes = await fetch(
+        `https://sandbox.belvo.com/api/transactions/?link=${newLinkId}&date_from=${inicioMes}&date_to=${finMes}`,
+        { headers: { 'Authorization': `Basic ${credentials}` } }
+      );
+      const txData = await txRes.json();
+      const rawTxs = txData.results || [];
+
+      // Mapear transacciones al formato de TomyGuia
+      const txs: BankTransaction[] = rawTxs
+        .filter((t: any) => t.type === 'OUTFLOW')
+        .map((t: any, i: number) => ({
+          id: Date.now() + i,
+          amount: Math.abs(t.amount),
+          label: t.description || t.merchant?.name || 'Gasto',
+          category: categorizarGasto(t.category || ''),
+          source: 'card' as const,
+        }));
+
+      // Armar ConnectedBank
+      const bank: ConnectedBank = {
+        id: newLinkId,
+        name: cuenta?.institution?.name || 'Banco conectado',
+        color: '#820AD1',
+        last4: cuenta?.number?.slice(-4) || '••••',
         connectedAt: Date.now(),
       };
-      const bankTxs: BankTransaction[] = txs.map((t, i) => ({
-        id: Date.now() + i,
-        amount: t.amount,
-        category: t.category,
-        label: t.label,
-        source: 'card' as const,
-      }));
 
       setStep('done');
       setTimeout(() => {
-        onConnected(connectedBank, bankTxs);
+        onConnected(bank, txs);
         handleClose();
       }, 1500);
-    }, 2500);
+
+    } catch (e: any) {
+      setErrorMsg('Error al obtener movimientos. Intenta de nuevo.');
+      setStep('error');
+    }
+  };
+
+  // ── Categorización simple por tipo Belvo ─────────────────────────────────────
+  const categorizarGasto = (category: string): 'needs' | 'wants' => {
+    const needs = ['BILLS_UTILITIES', 'GROCERIES', 'HEALTH', 'TRANSPORT',
+                   'EDUCATION', 'HOUSING', 'INSURANCE'];
+    return needs.some(n => category.includes(n)) ? 'needs' : 'wants';
+  };
+
+  // ── Manejar mensajes del WebView (eventos Belvo Widget) ──────────────────────
+  const handleWebViewMessage = (event: any) => {
+    try {
+      const msg = JSON.parse(event.nativeEvent.data);
+      if (msg.eventName === 'SUCCESS') {
+        const newLinkId = msg.meta?.link || msg.link_id || '';
+        setLinkId(newLinkId);
+        obtenerTransacciones(newLinkId);
+      } else if (msg.eventName === 'EXIT') {
+        handleClose();
+      } else if (msg.eventName === 'ERROR') {
+        setErrorMsg(msg.meta?.error_message || 'Error en la conexion');
+        setStep('error');
+      }
+    } catch {}
+  };
+
+  // ── HTML del widget Belvo ─────────────────────────────────────────────────────
+  const belvoWidgetHTML = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, sans-serif; background: #fff8fa; }
+    #belvo { width: 100%; height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="belvo"></div>
+  <script src="https://cdn.belvo.io/belvo-widget-1-stable.js"></script>
+  <script>
+    function successCallback(link, institution) {
+      window.ReactNativeWebView.postMessage(JSON.stringify({
+        eventName: 'SUCCESS',
+        meta: { link: link, institution: institution }
+      }));
+    }
+    function onExitCallback() {
+      window.ReactNativeWebView.postMessage(JSON.stringify({ eventName: 'EXIT' }));
+    }
+    function onEventCallback(eventName, meta) {
+      if (eventName === 'ERROR') {
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          eventName: 'ERROR',
+          meta: meta
+        }));
+      }
+    }
+    belvoSDK.createWidget("${accessToken}", {
+      callback: successCallback,
+      onExit: onExitCallback,
+      onEvent: onEventCallback,
+      country_codes: ['MX'],
+      locale: 'es',
+      access_mode: 'recurrent',
+    }).build();
+  </script>
+</body>
+</html>`;
+
+  const handleClose = () => {
+    setStep('loading');
+    setAccessToken('');
+    setLinkId('');
+    setErrorMsg('');
+    onClose();
   };
 
   return (
-    <Modal visible={isOpen} transparent animationType="slide" onRequestClose={handleClose}>
-      <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={step === 'select' ? handleClose : undefined} />
-
-      <View style={s.sheet}>
-        <View style={s.handle} />
-
-        {/* SELECCIONAR BANCO */}
-        {step === 'select' && (
-          <>
-            <Text style={s.title}>Conecta tu banco 🏦</Text>
-            <Text style={s.subtitle}>
-              Importamos tus movimientos del mes y los clasificamos automáticamente en tu presupuesto
-            </Text>
-
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 360 }}>
-              {BANKS.map(bank => (
-                <TouchableOpacity
-                  key={bank.id}
-                  style={s.bankRow}
-                  onPress={() => handleSelectBank(bank)}
-                  activeOpacity={0.7}
-                >
-                  <View style={[s.bankIcon, { backgroundColor: bank.color + '18' }]}>
-                    <Text style={s.bankEmoji}>{bank.emoji}</Text>
-                  </View>
-                  <View style={s.bankInfo}>
-                    <Text style={s.bankName}>{bank.name}</Text>
-                    <Text style={s.bankSub}>•••• {bank.last4}</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={20} color="#FFCAD4" />
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            <TouchableOpacity style={s.skipBtn} onPress={handleClose}>
-              <Text style={s.skipTxt}>Ahora no</Text>
+    <Modal
+      visible={isOpen}
+      transparent={step !== 'widget'}
+      animationType="slide"
+      onRequestClose={handleClose}
+      onShow={obtenerToken}
+    >
+      {/* Widget Belvo — pantalla completa */}
+      {step === 'widget' && (
+        <View style={s.fullscreen}>
+          <View style={s.widgetHeader}>
+            <TouchableOpacity onPress={handleClose} style={s.closeBtn}>
+              <Ionicons name="close" size={22} color="#9D8189" />
             </TouchableOpacity>
-          </>
-        )}
-
-        {/* CONECTANDO */}
-        {step === 'connecting' && selectedBank && (
-          <View style={s.center}>
-            <View style={[s.bankIconLarge, { backgroundColor: selectedBank.color + '18' }]}>
-              <Text style={{ fontSize: 44 }}>{selectedBank.emoji}</Text>
-            </View>
-            <Text style={s.connectingTitle}>Conectando con {selectedBank.name}</Text>
-            <Text style={s.connectingSub}>Importando tus movimientos del mes...</Text>
-            <ActivityIndicator size="large" color={selectedBank.color} style={{ marginTop: 20 }} />
-
-            {/* Pasos animados */}
-            <View style={s.steps}>
-              <StepRow text="Verificando credenciales" done />
-              <StepRow text="Obteniendo movimientos" done />
-              <StepRow text="Clasificando gastos..." loading />
-            </View>
+            <Text style={s.widgetTitle}>Conecta tu banco</Text>
+            <View style={{ width: 36 }} />
           </View>
-        )}
+          <WebView
+            ref={webviewRef}
+            source={{ html: belvoWidgetHTML }}
+            onMessage={handleWebViewMessage}
+            javaScriptEnabled
+            domStorageEnabled
+            style={{ flex: 1 }}
+          />
+        </View>
+      )}
 
-        {/* LISTO */}
-        {step === 'done' && selectedBank && (
-          <View style={s.center}>
-            <View style={s.doneCircle}>
-              <Ionicons name="checkmark" size={44} color="#fff" />
-            </View>
-            <Text style={s.doneTitle}>¡{selectedBank.name} conectado!</Text>
-            <Text style={s.doneSub}>
-              Se importaron 10 movimientos a tu presupuesto 🎉
-            </Text>
+      {/* Estados no-widget — bottom sheet */}
+      {step !== 'widget' && (
+        <>
+          <TouchableOpacity
+            style={s.overlay}
+            activeOpacity={1}
+            onPress={step === 'loading' ? undefined : handleClose}
+          />
+          <View style={s.sheet}>
+            <View style={s.handle} />
+
+            {/* Cargando token */}
+            {step === 'loading' && (
+              <View style={s.center}>
+                <ActivityIndicator size="large" color="#F4ACB7" />
+                <Text style={s.loadingTitle}>Preparando conexion segura</Text>
+                <Text style={s.loadingSub}>Conectando con Belvo...</Text>
+              </View>
+            )}
+
+            {/* Obteniendo transacciones */}
+            {step === 'fetching' && (
+              <View style={s.center}>
+                <ActivityIndicator size="large" color="#85A89E" />
+                <Text style={s.loadingTitle}>Importando movimientos</Text>
+                <Text style={s.loadingSub}>Esto toma unos segundos...</Text>
+                <View style={s.steps}>
+                  <StepRow text="Banco conectado" done />
+                  <StepRow text="Obteniendo transacciones" loading />
+                </View>
+              </View>
+            )}
+
+            {/* Listo */}
+            {step === 'done' && (
+              <View style={s.center}>
+                <View style={s.doneCircle}>
+                  <Ionicons name="checkmark" size={44} color="#fff" />
+                </View>
+                <Text style={s.doneTitle}>Banco conectado</Text>
+                <Text style={s.doneSub}>
+                  Tus movimientos del mes ya estan en tu presupuesto
+                </Text>
+              </View>
+            )}
+
+            {/* Error */}
+            {step === 'error' && (
+              <View style={s.center}>
+                <View style={[s.doneCircle, { backgroundColor: '#FF8A80' }]}>
+                  <Ionicons name="close" size={44} color="#fff" />
+                </View>
+                <Text style={s.doneTitle}>Algo salio mal</Text>
+                <Text style={s.doneSub}>{errorMsg}</Text>
+                <TouchableOpacity style={s.retryBtn} onPress={obtenerToken}>
+                  <Text style={s.retryTxt}>Intentar de nuevo</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={s.skipBtn} onPress={handleClose}>
+                  <Text style={s.skipTxt}>Cerrar</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
-        )}
-      </View>
+        </>
+      )}
     </Modal>
   );
 }
@@ -252,6 +332,7 @@ const s = StyleSheet.create({
     padding: 24,
     paddingBottom: 40,
     elevation: 20,
+    minHeight: 240,
   },
   handle: {
     width: 48, height: 5,
@@ -260,59 +341,68 @@ const s = StyleSheet.create({
     alignSelf: 'center',
     marginBottom: 20,
   },
-  title: {
-    fontSize: 22, fontWeight: '800',
-    color: '#F4ACB7', textAlign: 'center', marginBottom: 6,
+  fullscreen: {
+    flex: 1,
+    backgroundColor: '#fff',
   },
-  subtitle: {
-    fontSize: 13, color: '#9D8189',
-    textAlign: 'center', lineHeight: 20,
-    marginBottom: 20, opacity: 0.8,
+  widgetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#FFE0E8',
   },
-  bankRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 14, paddingHorizontal: 4,
-    borderBottomWidth: 1, borderBottomColor: '#FFF0F4',
-    gap: 14,
+  widgetTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#9D8189',
   },
-  bankIcon: {
-    width: 48, height: 48, borderRadius: 14,
-    alignItems: 'center', justifyContent: 'center',
+  closeBtn: {
+    width: 36, height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FFF0F4',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  bankEmoji: { fontSize: 24 },
-  bankInfo: { flex: 1 },
-  bankName: { fontSize: 16, fontWeight: '700', color: '#6D5A62' },
-  bankSub: { fontSize: 12, color: '#9D8189', marginTop: 2 },
-  skipBtn: { alignItems: 'center', paddingVertical: 14 },
-  skipTxt: { fontSize: 14, color: '#9D8189', fontWeight: '600' },
   center: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 20, gap: 10,
+    paddingVertical: 20,
+    gap: 10,
   },
-  bankIconLarge: {
-    width: 90, height: 90, borderRadius: 24,
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 8,
+  loadingTitle: {
+    fontSize: 18, fontWeight: '700', color: '#9D8189', marginTop: 8,
   },
-  connectingTitle: {
-    fontSize: 20, fontWeight: '800', color: '#9D8189',
-  },
-  connectingSub: {
+  loadingSub: {
     fontSize: 13, color: '#9D8189', opacity: 0.7,
   },
-  steps: { marginTop: 16, gap: 4, alignSelf: 'flex-start', paddingHorizontal: 20 },
+  steps: {
+    marginTop: 16, gap: 4,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 20,
+  },
   doneCircle: {
-    width: 90, height: 90, borderRadius: 45,
+    width: 80, height: 80, borderRadius: 40,
     backgroundColor: '#85A89E',
     alignItems: 'center', justifyContent: 'center',
     marginBottom: 8,
   },
   doneTitle: {
-    fontSize: 22, fontWeight: '800', color: '#F4ACB7',
+    fontSize: 20, fontWeight: '800', color: '#F4ACB7',
   },
   doneSub: {
-    fontSize: 14, color: '#9D8189',
-    textAlign: 'center', lineHeight: 22,
+    fontSize: 13, color: '#9D8189',
+    textAlign: 'center', lineHeight: 20,
+    paddingHorizontal: 20,
   },
+  retryBtn: {
+    backgroundColor: '#F4ACB7',
+    paddingHorizontal: 24, paddingVertical: 12,
+    borderRadius: 20, marginTop: 8,
+  },
+  retryTxt: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  skipBtn: { alignItems: 'center', paddingVertical: 10 },
+  skipTxt: { fontSize: 14, color: '#9D8189', fontWeight: '600' },
 });

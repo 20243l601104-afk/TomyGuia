@@ -150,6 +150,7 @@ export default function App() {
                 renta={housing === 'rent'}
                 tieneCarro={transport === 'car'}
                 nombreUsuaria={profile.name || undefined}
+                monthlyIncome={monthlyIncome}
               />
             )}
             {activeTab === 'academia' && <AcademiaScreen onAddFlowers={addFlowers} />}

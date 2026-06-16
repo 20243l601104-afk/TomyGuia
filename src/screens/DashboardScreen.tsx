@@ -1,10 +1,12 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Modal, Alert, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Modal, Alert, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CalendarWidget } from '../components/CalendarWidget';
 import { BottomChat } from '../components/BottomChat';
 import { BankConnectModal } from '../components/BankConnectModal';
+const CEMPASUCHIL = require('../../assets/cempasuchil.png');
+
 import { TomasaSVG } from '../components/TomasaSVG';
 import { FloatingAssistant } from '../components/FloatingAssistant';
 import type { FixedExpenseSeed, FixedExpense, Expense, ConnectedBank, BankTransaction, UserProfile } from '../types';
@@ -252,23 +254,23 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
 
 
   return (
-    <View style={[s.con, { paddingTop: ins.top }]}>
+    <KeyboardAvoidingView style={[s.con, { paddingTop: ins.top }]} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
       <View style={[s.bl, s.b1]} /><View style={[s.bl, s.b2]} />
 
       {/* Header */}
       <View style={s.hd}>
-        <View><Text style={s.gr}>¡Hola{profile.name ? `, ${profile.name}` : ''}!</Text><Text style={s.sg}>Lista para crecer</Text></View>
+        <View><Text style={s.gr}>¡Hola{profile.name ? `, ${profile.name}` : ''}!</Text><Text style={s.sg}>{new Date().toLocaleDateString('es-MX', { month: 'long', year: 'numeric' }).replace(/^./, (m: string) => m.toUpperCase())}</Text></View>
         <View style={s.headerRight}>
-          <TouchableOpacity style={s.emergenciaBtn} onPress={() => setShowEmergency(true)} activeOpacity={0.7}>
-            <Ionicons name="shield-half-outline" size={18} color="#F4ACB7" />
-          </TouchableOpacity>
           <TouchableOpacity style={s.av} onPress={onProfilePress} activeOpacity={0.7}>
           {profile.photoUri ? (
             <Image source={{ uri: profile.photoUri }} style={s.ai} />
           ) : (
             <View style={s.incognito}><TomasaSVG size={32} floating={false} /></View>
           )}
-          <View style={s.flowerBadge}><Text style={s.flowerBadgeTxt}>🌼{profile.flowers}</Text></View>
+          <View style={s.flowerBadge}>
+              <Image source={CEMPASUCHIL} style={{ width: 12, height: 12 }} resizeMode="contain" />
+              <Text style={s.flowerBadgeTxt}>{profile.flowers}</Text>
+            </View>
           </TouchableOpacity>
         </View>
       </View>
@@ -314,9 +316,9 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
               }]} />
             </View>
             <Text style={[s.barraSubtexto, { color: moneyPct < 50 ? '#D64545' : '#9D818970' }]}>
-              {moneyPct >= 100 ? '✅ Tienes para cubrir todo lo que falta'
+              {moneyPct >= 100 ? 'Tienes para cubrir todo lo que falta'
                 : moneyPct >= 50 ? `Cubre el ${moneyPct}% de lo que queda por pagar`
-                : `⚠️ Solo cubre el ${moneyPct}% de lo pendiente`}
+                : `Aun te faltan $${(pendingBillsAmount - needsBudget).toLocaleString('es-MX')} — agrega mas a necesidades`}
             </Text>
           </View>
           {paidBills.length > 0 && (
@@ -341,6 +343,11 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
               ))}
             </View>
           )}
+          {seedExpenses.length === 0 && (
+            <Text style={{ fontSize: 11, color: '#9D8189', marginBottom: 6, lineHeight: 16 }}>
+              {'Agrega tus gastos fijos aqui — renta, luz, agua, internet — para saber cuanto necesitas cada mes.'}
+            </Text>
+          )}
           <TouchableOpacity style={s.ct} onPress={() => setNe(!ne)}>
             <Ionicons name="calendar-outline" size={14} color="#F4ACB7" />
             <Text style={s.ctt}>Ver calendario de pagos</Text>
@@ -357,6 +364,11 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
           </View>
           <View style={s.bc}><Text style={[s.bcu, { color: '#F3C57C' }]}>$</Text><Text style={[s.bam, { color: '#F3C57C' }]}>{dailyFree.toLocaleString('es-MX')}</Text><Text style={s.bday}>/día</Text></View>
           <Text style={s.bs}>{tl} · ${weeklyFree.toLocaleString('es-MX')} semana</Text>
+          {dailyFree < 50 && wantsBudget < 500 && (
+            <Text style={{ fontSize: 11, color: '#B58A3A', marginTop: 4, lineHeight: 16 }}>
+              {'Este monto se ve bajo porque aun no registras tu ingreso completo. Escribe cuanto cobraste en el chat de abajo.'}
+            </Text>
+          )}
           <View style={s.balRow}><Text style={s.balLabel}>Cajón gustos:</Text><Text style={[s.balValue, { color: '#B58A3A' }]}>${wantsBudget.toLocaleString('es-MX')}</Text></View>
           {exps.filter(e => e.category === 'wants').length > 0 && (
             <View style={{ marginTop: 4, gap: 4 }}>
@@ -393,7 +405,12 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
           </View>
           <View style={s.na}><Text style={[s.nab, { color: '#5B776F' }]}>${ef.toLocaleString('es-MX')}</Text><Text style={s.nas}>/ ${emergencyFundGoal.toLocaleString('es-MX')} · 3 meses</Text></View>
           <View style={s.pt}><View style={[s.pf, { width: `${ep}%` as any, backgroundColor: '#85A89E' }]} /></View>
-          <Text style={s.fp}>🛡️ {mp} meses de seguridad asegurados</Text>
+          <Text style={s.fp}>{mp > 0 ? `${mp} ${mp === 1 ? 'mes' : 'meses'} de respaldo cubiertos` : 'Aun sin colchon de emergencia — cada pesito cuenta'}</Text>
+          {ef === 0 && (
+            <Text style={{ fontSize: 11, color: '#85A89E', marginTop: 4, lineHeight: 16 }}>
+              {'Para empezar escribe algo como: aparte 200 para emergencias'}
+            </Text>
+          )}
         </View>
 
         {/* ═══ 4. PAGOS ANUALES (Morado #9D8189) ═══ */}
@@ -415,7 +432,7 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
           {pagosAnuales.length === 0 ? (
             /* Estado vacío — Tomasa invita */
             <TouchableOpacity style={s.pagoVacio} onPress={() => setShowAddPago(true)}>
-              <Text style={s.pagoVacioEmoji}>📅</Text>
+              
               <Text style={s.pagoVacioTitulo}>Planea tus pagos del año</Text>
               <Text style={s.pagoVacioDesc}>
                 Predial, tenencia, seguro... agrégalos aquí y te digo cuánto ahorrar cada mes para no sorprenderte
@@ -458,7 +475,7 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
                         ${pago.ahorrado.toLocaleString('es-MX')} de ${pago.monto.toLocaleString('es-MX')}
                       </Text>
                       {isCompleto ? (
-                        <Text style={s.pagoCompleto}>✅ Listo</Text>
+                        <Text style={s.pagoCompleto}>Pagado</Text>
                       ) : (
                         <Text style={[s.pagoMensual, isUrgente && { color: '#D64545' }]}>
                           ${ahorroMes.toLocaleString('es-MX')}/mes
@@ -469,8 +486,8 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
                     {!isCompleto && (
                       <Text style={s.pagoMsg}>
                         {isUrgente
-                          ? `¡Quedan ${mesesRest} mes${mesesRest > 1 ? 'es' : ''}! Falta $${falta.toLocaleString('es-MX')} 🌼`
-                          : `Aparta $${ahorroMes.toLocaleString('es-MX')} al mes — faltan ${mesesRest} meses 💪`}
+                          ? `Quedan ${mesesRest} mes${mesesRest > 1 ? 'es' : ''}. Falta $${falta.toLocaleString('es-MX')}`
+                          : `Aparta $${ahorroMes.toLocaleString('es-MX')} al mes — faltan ${mesesRest} meses`}
                       </Text>
                     )}
 
@@ -510,7 +527,7 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
         <TouchableOpacity style={s.modalOverlay} activeOpacity={1} onPress={() => setShowAbonar(false)} />
         <View style={[s.modalSheet, { paddingBottom: 40 }]}>
           <View style={s.modalHandle} />
-          <Text style={s.modalTitulo}>Abonar al ahorro 💰</Text>
+          <Text style={s.modalTitulo}>Abonar al ahorro</Text>
           <Text style={s.modalDesc}>
             {pagosAnuales.find(p => p.id === abonarPagoId)
               ? `Falta $${Math.max(0, (pagosAnuales.find(p => p.id === abonarPagoId)?.monto || 0) - (pagosAnuales.find(p => p.id === abonarPagoId)?.ahorrado || 0)).toLocaleString('es-MX')} para completar ${pagosAnuales.find(p => p.id === abonarPagoId)?.nombre}`
@@ -552,7 +569,7 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
 
             {/* Header con Tomasa */}
             <View style={{ alignItems: 'center', marginBottom: 20, gap: 8 }}>
-              <Text style={{ fontSize: 48 }}>🌸</Text>
+              
               <Text style={[s.modalTitulo, { textAlign: 'center' }]}>¡Cerraste el mes!</Text>
               <Text style={[s.modalDesc, { textAlign: 'center' }]}>
                 Te sobraron recursos del mes pasado. ¿Qué hacemos con ellos?
@@ -593,7 +610,7 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
                   setShowCierreMes(false);
                 }}
               >
-                <Text style={s.cierreOpcionEmoji}>🛡️</Text>
+                
                 <View style={{ flex: 1 }}>
                   <Text style={s.cierreOpcionTitulo}>Fondo de emergencia</Text>
                   <Text style={s.cierreOpcionDesc}>Súmalo a tu ahorro de seguridad</Text>
@@ -620,7 +637,7 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
                     setShowCierreMes(false);
                   }}
                 >
-                  <Text style={s.cierreOpcionEmoji}>📅</Text>
+                  
                   <View style={{ flex: 1 }}>
                     <Text style={s.cierreOpcionTitulo}>Pagos del año</Text>
                     <Text style={s.cierreOpcionDesc}>Abonarlo a tus pagos anuales pendientes</Text>
@@ -634,7 +651,7 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
                 style={[s.cierreOpcion, { borderColor: '#F0E0E5' }]}
                 onPress={() => setShowCierreMes(false)}
               >
-                <Text style={s.cierreOpcionEmoji}>💭</Text>
+                
                 <View style={{ flex: 1 }}>
                   <Text style={s.cierreOpcionTitulo}>Lo decido después</Text>
                   <Text style={s.cierreOpcionDesc}>Cerrar sin mover el dinero</Text>
@@ -651,7 +668,7 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
           <TouchableOpacity style={s.modalOverlay} activeOpacity={1} onPress={() => setShowAddPago(false)} />
           <View style={s.modalSheet}>
             <View style={s.modalHandle} />
-            <Text style={s.modalTitulo}>Nuevo pago del año 📅</Text>
+            <Text style={s.modalTitulo}>Nuevo pago del año</Text>
             <Text style={s.modalDesc}>Agrega un pago anual y te digo cuánto guardar cada mes</Text>
 
             <Text style={s.modalLabel}>¿Qué vas a pagar?</Text>
@@ -694,7 +711,7 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
             {newPagoMonto && Number(newPagoMonto) > 0 && (
               <View style={s.modalPreview}>
                 <Text style={s.modalPreviewTxt}>
-                  💡 Deberías apartar ~${Math.ceil(Number(newPagoMonto) / Math.max(1, (() => {
+                  Sugerencia: aparta ~${Math.ceil(Number(newPagoMonto) / Math.max(1, (() => {
                     const hoy = new Date();
                     const vence = new Date(newPagoMes <= hoy.getMonth() + 1 ? hoy.getFullYear() + 1 : hoy.getFullYear(), newPagoMes - 1, 1);
                     return Math.max(1, (vence.getFullYear() - hoy.getFullYear()) * 12 + (vence.getMonth() - hoy.getMonth()));
@@ -730,7 +747,7 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
         </View>
       </ScrollView>
 
-      <View style={s.cbr}><BottomChat onIncomeAdded={onIA} onExpenseAdded={onEA} onBillPaid={onBillPaid} fixedExpenses={seedExpenses} currentNeeds={needsBudget} currentWants={wantsBudget} currentSavings={ef} totalBalance={totalBal} /></View>
+      <View style={s.cbr}><BottomChat onIncomeAdded={onIA} onExpenseAdded={onEA} onBillPaid={onBillPaid} fixedExpenses={seedExpenses} currentNeeds={needsBudget} currentWants={wantsBudget} currentSavings={ef} totalBalance={totalBal} monthlyIncome={monthlyIncome} userName={profile.name} /></View>
 <FloatingAssistant
         wantsBudget={wantsBudget}
         wantsSpent={exps.filter(e => e.category === 'wants').reduce((a, e) => a + e.amount, 0)}
@@ -742,7 +759,7 @@ export function DashboardScreen({ emergencyFundGoal, totalBalance, seedExpenses,
         recentActivityCount={exps.filter(e => Date.now() - e.id < 2 * 60 * 60 * 1000).length}
       />     
  <BankConnectModal isOpen={bmo} onClose={() => setBmo(false)} onConnected={onBC} />
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -820,11 +837,6 @@ const s = StyleSheet.create({
   modalBtn:         { backgroundColor: '#9D8189', borderRadius: 16, paddingVertical: 16, alignItems: 'center' },
   modalBtnTxt:      { color: '#fff', fontWeight: '800', fontSize: 15 },
   headerRight:   { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  emergenciaBtn: {
-    width: 36, height: 36, borderRadius: 10,
-    backgroundColor: '#FFF0F4', alignItems: 'center',
-    justifyContent: 'center', borderWidth: 1, borderColor: '#FFCAD430',
-  },
   flowerBadge: { position: 'absolute', bottom: -4, right: -4, backgroundColor: '#fff', borderRadius: 99, paddingHorizontal: 5, paddingVertical: 1, elevation: 4, borderWidth: 1, borderColor: '#F3C57C40' },
   flowerBadgeTxt: { fontSize: 9, fontWeight: '800', color: '#E8963B' },
   sc: { flex: 1, paddingHorizontal: 24, paddingTop: 8, zIndex: 10 },
@@ -879,5 +891,5 @@ const s = StyleSheet.create({
   sumLabel: { fontSize: 10, fontWeight: '700', color: '#9D8189', opacity: 0.7 },
   sumVal: { fontSize: 12, fontWeight: '800' },
   sumTotal: { fontSize: 11, fontWeight: '700', color: '#9D8189', opacity: 0.6, textAlign: 'center' },
-  cbr: { position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 40 },
+  cbr: { position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 40, backgroundColor: 'transparent' },
 });

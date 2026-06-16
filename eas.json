@@ -11,7 +11,9 @@
       "env": {
         "NPM_CONFIG_LEGACY_PEER_DEPS": "true",
         "STT_API_KEY": "62461b4c72d9d13bbeac318164ad644df2e5379e",
-        "GEMINI_API_KEY": "AQ.Ab8RN6LkaFpStIAJa4IcFEFf8bvrD4GHJHN1PQeTlHl4naf2wg"
+        "GEMINI_API_KEY": "AQ.Ab8RN6LkaFpStIAJa4IcFEFf8bvrD4GHJHN1PQeTlHl4naf2wg",
+        "EXPO_PUBLIC_BELVO_SECRET_ID": "67780f49-f34b-4c2b-8bc4-32014800d672",
+        "EXPO_PUBLIC_BELVO_SECRET_KEY": "AU1eT#*QhUQGoTBKPqf5t*Vi6Bpi*yCzDklO89_k@#Wb0CDuvdvdFVLnJ4HPE9Uv"
       }
     },
     "production": {
@@ -22,7 +24,9 @@
       "env": {
         "NPM_CONFIG_LEGACY_PEER_DEPS": "true",
         "STT_API_KEY": "62461b4c72d9d13bbeac318164ad644df2e5379e",
-        "GEMINI_API_KEY": "AQ.Ab8RN6LkaFpStIAJa4IcFEFf8bvrD4GHJHN1PQeTlHl4naf2wg"
+        "GEMINI_API_KEY": "AQ.Ab8RN6LkaFpStIAJa4IcFEFf8bvrD4GHJHN1PQeTlHl4naf2wg",
+        "EXPO_PUBLIC_BELVO_SECRET_ID": "TU_SECRET_ID_AQUI",
+        "EXPO_PUBLIC_BELVO_SECRET_KEY": "TU_SECRET_KEY_AQUI"
       }
     }
   }
