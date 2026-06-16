@@ -121,12 +121,26 @@ export async function loadDashboardState(initial50: number, initial30: number, i
   const currentMonth = getCurrentMonth();
   const isSameMonth  = month === currentMonth;
 
-  if (!month || !isSameMonth) {
-    // Mes nuevo o primera vez — resetear gastos pero mantener ef acumulado
+  if (!month) {
+    // Primera vez — no es mes nuevo, es inicio limpio
     return {
       needsBudget: initial50,
       wantsBudget: initial30,
-      ef:          ef ? Number(ef) : initial20, // mantener fondo de emergencia
+      ef:          initial20,
+      exps:        [],
+      paidBills:   [],
+      bank:        null,
+      pagosAnuales: [],
+      isNewMonth:  false,
+    };
+  }
+
+  if (!isSameMonth) {
+    // Mes nuevo real — mantener ef acumulado
+    return {
+      needsBudget: initial50,
+      wantsBudget: initial30,
+      ef:          ef ? Number(ef) : initial20,
       exps:        [],
       paidBills:   [],
       bank:        bank ? JSON.parse(bank) : null,

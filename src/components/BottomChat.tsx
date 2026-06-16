@@ -229,7 +229,7 @@ export function BottomChat({ onIncomeAdded, onExpenseAdded, onBillPaid, fixedExp
       if (!STT_API_KEY) { showFeedback('Sin conexion de voz'); setIsTranscribing(false); return; }
 
       // Leer el archivo de audio y enviarlo directo a Deepgram
-      const FileSystem = require('expo-file-system');
+      const FileSystem = require('expo-file-system/legacy');
       const audioInfo = await FileSystem.getInfoAsync(uri);
       if (!audioInfo.exists) { showFeedback('Sin audio'); setIsTranscribing(false); return; }
 

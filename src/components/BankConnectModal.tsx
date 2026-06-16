@@ -59,7 +59,7 @@ export function BankConnectModal({ isOpen, onClose, onConnected }: Props) {
         body: JSON.stringify({
           id: BELVO_SECRET_ID,
           password: BELVO_SECRET_KEY,
-          scopes: 'read_institutions,write_links,read_accounts,read_balances,read_owners',
+          scopes: 'read_institutions,write_links,read_accounts',
         }),
       });
 
@@ -68,9 +68,8 @@ export function BankConnectModal({ isOpen, onClose, onConnected }: Props) {
       try { data = JSON.parse(text); } catch {}
 
       if (!res.ok) {
-        // Mostrar el error real de Belvo para debug
-        const msg = data.detail || data.message || `Error ${res.status}`;
-        throw new Error(msg);
+        const msg = Array.isArray(data) ? data[0]?.message || data[0]?.code || JSON.stringify(data) : data.detail || data.message || `Error ${res.status}`;
+        throw new Error(`Belvo ${res.status}: ${msg}`);
       }
 
       if (data.access) {
