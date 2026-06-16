@@ -229,25 +229,23 @@ export function BottomChat({ onIncomeAdded, onExpenseAdded, onBillPaid, fixedExp
       if (!uri) { showFeedback('Sin audio'); setIsTranscribing(false); return; }
       if (!STT_API_KEY) { showFeedback('Sin conexion de voz'); setIsTranscribing(false); return; }
 
-      const FileSystem = require('expo-file-system').default;
-      const audioBase64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
-      const binaryString = atob(audioBase64);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      const audioBlob = new Blob([bytes], { type: 'audio/m4a' });
+      // React Native/Hermes no tiene Blob ni atob
+      // Usamos FormData con uri directo — compatible con React Native
+      const formData = new FormData();
+      formData.append('audio', {
+        uri: uri,
+        type: 'audio/m4a',
+        name: 'audio.m4a',
+      } as any);
 
-      console.log('Enviando audio a Deepgram...');
       const response = await fetch(
         'https://api.deepgram.com/v1/listen?language=es&model=nova-2&punctuate=true',
         {
           method: 'POST',
           headers: {
-            'Authorization': `Token ${STT_API_KEY}`,
-            'Content-Type': 'audio/m4a',  // expo-audio graba en m4a
+            'Authorization': 'Token ' + STT_API_KEY,
           },
-          body: audioBlob,
+          body: formData,
         }
       );
 
