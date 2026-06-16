@@ -6,7 +6,6 @@ import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TomasaSVG } from '../components/TomasaSVG';
 
-const CEMPASUCHIL = require('../../assets/cempasuchil.png');
 import type { UserProfile } from '../types';
 
 const C = { ROSA: '#F4ACB7', CLARO: '#FFCAD4', MELON: '#FFE5D9', MENTA: '#D8E2DC', MALVA: '#9D8189', VERDE: '#5B776F', AMARILLO: '#F3C57C', NARANJA: '#E8963B' };
