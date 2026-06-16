@@ -40,20 +40,35 @@ export default function App() {
 
   useEffect(() => {
     const init = async () => {
-      const data         = await loadOnboardingData();
-      const savedProfile = await loadProfile();
-      const loggedIn     = await isLoggedIn();
-      if (savedProfile) setProfile(savedProfile);
-      if (!data) {
+      try {
+        // Detectar si es una instalacion nueva comparando version
+        const APP_VERSION = '2.0';
+        const storedVersion = await AsyncStorage.getItem('tomy_app_version');
+        if (storedVersion !== APP_VERSION) {
+          // Version nueva — limpiar todo el storage para empezar fresh
+          await AsyncStorage.clear();
+          await AsyncStorage.setItem('tomy_app_version', APP_VERSION);
+        }
+        const data         = await loadOnboardingData();
+        const savedProfile = await loadProfile();
+        const loggedIn     = await isLoggedIn();
+        if (savedProfile) setProfile(savedProfile);
+        const onboardingValido = data && (data.monthlyIncome > 0 || data.fixedExpenses.length > 0);
+        if (!onboardingValido) {
+          setView('onboarding');
+        } else {
+          setSeedExpenses(data.fixedExpenses);
+          setTotalBalance(data.totalBalance);
+          setEmergencyFundGoal(data.emergencyFundGoal);
+          setMonthlyIncome(data.monthlyIncome);
+          setHousing(data.housing || null);
+          setTransport(data.transport || null);
+          setView(loggedIn ? 'main' : 'auth');
+        }
+      } catch (e) {
+        // Si algo falla, mostrar onboarding de todas formas
+        console.error('Init error:', e);
         setView('onboarding');
-      } else {
-        setSeedExpenses(data.fixedExpenses);
-        setTotalBalance(data.totalBalance);
-        setEmergencyFundGoal(data.emergencyFundGoal);
-        setMonthlyIncome(data.monthlyIncome);
-        setHousing(data.housing || null);
-        setTransport(data.transport || null);
-        setView(loggedIn ? 'main' : 'auth');
       }
     };
     init();

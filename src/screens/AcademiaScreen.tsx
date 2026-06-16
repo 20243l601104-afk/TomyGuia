@@ -333,7 +333,7 @@ export function AcademiaScreen({ onAddFlowers }: Props) {
  </View>
 
  <View style={s.bienvenidaCard}>
- <Text style={s.bienvenidaTitulo}>¡Bienvenida a TomyAcademia! </Text>
+ <Text style={s.bienvenidaTitulo}>Bienvenida a TomyAcademia</Text>
  <Text style={s.bienvenidaTexto}>
  Aquí aprenderás finanzas personales desde lo más básico hasta lo más avanzado, a tu propio ritmo.
  </Text>

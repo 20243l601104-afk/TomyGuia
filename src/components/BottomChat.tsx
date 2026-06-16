@@ -1,7 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView } from 'react-native';
-import { Audio } from 'expo-av';
-import { useAudioRecorder, RecordingPresets } from 'expo-audio';
+import { useAudioRecorder, RecordingPresets, AudioModule } from 'expo-audio';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, NEEDS_KEYWORDS, WANTS_KEYWORDS } from '../constants';
 import { STT_API_KEY, STT_URL, GEMINI_API_KEY, GEMINI_API_URL } from '../constants/apiConfig';
@@ -207,8 +206,8 @@ export function BottomChat({ onIncomeAdded, onExpenseAdded, onBillPaid, fixedExp
 
   const startRecording = async () => {
     try {
-      const { status } = await Audio.requestPermissionsAsync();
-      if (status !== 'granted') {
+      const status = await AudioModule.requestRecordingPermissionsAsync();
+      if (!status.granted) {
         showFeedback('Sin permiso de microfono');
         return;
       }
@@ -229,14 +228,22 @@ export function BottomChat({ onIncomeAdded, onExpenseAdded, onBillPaid, fixedExp
       if (!uri) { showFeedback('Sin audio'); setIsTranscribing(false); return; }
       if (!STT_API_KEY) { showFeedback('Sin conexion de voz'); setIsTranscribing(false); return; }
 
-      // React Native/Hermes no tiene Blob ni atob
-      // Usamos FormData con uri directo — compatible con React Native
-      const formData = new FormData();
-      formData.append('audio', {
-        uri: uri,
-        type: 'audio/m4a',
-        name: 'audio.m4a',
-      } as any);
+      // Leer el archivo de audio y enviarlo directo a Deepgram
+      const FileSystem = require('expo-file-system');
+      const audioInfo = await FileSystem.getInfoAsync(uri);
+      if (!audioInfo.exists) { showFeedback('Sin audio'); setIsTranscribing(false); return; }
+
+      // Leer como base64 y convertir a ArrayBuffer para Deepgram
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      // Convertir base64 a Uint8Array compatible con React Native
+      const binaryStr = globalThis.atob ? globalThis.atob(base64) : Buffer.from(base64, 'base64').toString('binary');
+      const bytes = new Uint8Array(binaryStr.length);
+      for (let i = 0; i < binaryStr.length; i++) {
+        bytes[i] = binaryStr.charCodeAt(i);
+      }
 
       const response = await fetch(
         'https://api.deepgram.com/v1/listen?language=es&model=nova-2&punctuate=true',
@@ -244,8 +251,9 @@ export function BottomChat({ onIncomeAdded, onExpenseAdded, onBillPaid, fixedExp
           method: 'POST',
           headers: {
             'Authorization': 'Token ' + STT_API_KEY,
+            'Content-Type': 'audio/m4a',
           },
-          body: formData,
+          body: bytes,
         }
       );
 
