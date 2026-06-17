@@ -404,12 +404,12 @@ export function AcademiaScreen({ onAddFlowers }: Props) {
  <View style={s.veCard}>
  <View style={s.veHandle} />
  <TomasaSVG size={80} floating mood="worried" />
- <Text style={s.veTitulo}>Bienvenida a TomyAcademia </Text>
+ <Text style={s.veTitulo}>Bienvenida a TomyAcademia</Text>
  <Text style={s.veTexto}>
  Aquí aprenderás sobre finanzas personales, tus derechos y más. Pero primero, algo importante:
  </Text>
  <View style={s.veAlertCard}>
- <Text style={s.veAlertTitulo}>¿Sabes qué es la violencia económica? </Text>
+ <Text style={s.veAlertTitulo}>¿Sabes qué es la violencia económica?</Text>
  <Text style={s.veTexto}>
  Es cuando alguien <Text style={{ fontWeight: '800' }}>controla tu dinero</Text>, te impide trabajar, o pone deudas a tu nombre sin permiso. No es normal y <Text style={{ fontWeight: '800' }}>no es tu culpa</Text>.
  </Text>
@@ -425,7 +425,7 @@ export function AcademiaScreen({ onAddFlowers }: Props) {
  setShowIntroVE(false);
  }}
  >
- <Text style={s.veBotonContTxt}>Entendido, ¡a aprender! </Text>
+ <Text style={s.veBotonContTxt}>Entendido, a aprender</Text>
  </TouchableOpacity>
  </View>
  </View>
@@ -2045,4 +2045,41 @@ const s = StyleSheet.create({
  borderWidth: 1, borderColor: '#F0E0E5',
  },
  simBtnTxt: { fontSize: 12, fontWeight: '600', color: '#9D8189' },
+ veOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' as const },
+ veCard: { backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 40, alignItems: 'center' as const, gap: 12 },
+ veHandle: { width: 48, height: 5, backgroundColor: '#E0D0D5', borderRadius: 99, marginBottom: 8 },
+ veTitulo: { fontSize: 20, fontWeight: '800' as const, color: '#9D8189', textAlign: 'center' as const },
+ veTexto: { fontSize: 14, color: '#555', lineHeight: 22, textAlign: 'center' as const },
+ veAlertCard: { backgroundColor: '#FFF0F4', borderRadius: 16, padding: 14, gap: 8, width: '100%' as const },
+ veAlertTitulo: { fontSize: 15, fontWeight: '700' as const, color: '#D4537E', textAlign: 'center' as const },
+ veBotones: { width: '100%' as const, gap: 10, marginTop: 8 },
+ veBotonCont: { backgroundColor: '#F4ACB7', borderRadius: 20, paddingVertical: 14, alignItems: 'center' as const },
+ veBotonContTxt: { fontSize: 15, fontWeight: '700' as const, color: '#fff' },
+ instruccionBanner: { backgroundColor: '#F4ACB7', borderRadius: 12, padding: 10, marginBottom: 10 },
+ resultadoDivider: { height: 1, backgroundColor: '#F0E0E5', marginVertical: 8 },
+ wowBadge: { backgroundColor: '#F3C57C', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4, alignSelf: 'center' as const },
+ wowTxt: { fontSize: 13, fontWeight: '700' as const, color: '#633806' },
+ timonInfoCard: { backgroundColor: '#F0F9F4', borderRadius: 12, padding: 12, marginTop: 8 },
+ timonRuleRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10, marginVertical: 4 },
+ timonNumBadge: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#F4ACB7', alignItems: 'center' as const, justifyContent: 'center' as const },
+ timonNumBadgeTxt: { fontSize: 13, fontWeight: '700' as const, color: '#fff' },
+ timonRuleLabel: { fontSize: 13, fontWeight: '700' as const, color: '#2D2D2D' },
+ timonRuleSub: { fontSize: 11, color: '#9D8189' },
+ timonError: { backgroundColor: '#FFF0F0', borderRadius: 10, padding: 10, marginTop: 6 },
+ timonErrorTxt: { fontSize: 12, color: '#CC4444', textAlign: 'center' as const },
+ frascoWrap: { alignItems: 'center' as const },
+ frascosFila: { flexDirection: 'row' as const, gap: 12, justifyContent: 'center' as const, marginVertical: 10 },
+ frascoVasoNew: { width: 70, height: 100, borderRadius: 12, borderWidth: 2, borderColor: '#F4ACB7', overflow: 'hidden' as const, justifyContent: 'flex-end' as const, backgroundColor: '#FFF5F7' },
+ frascoRellenoNew: { position: 'absolute' as const, bottom: 0, left: 0, right: 0 },
+ frascoTitleNew: { fontSize: 12, fontWeight: '700' as const, color: '#9D8189', textAlign: 'center' as const, marginTop: 4 },
+ frascoLabelNew: { fontSize: 11, color: '#9D8189', textAlign: 'center' as const },
+ frascoBtnNew: { marginTop: 4, backgroundColor: '#F4ACB7', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 4 },
+ frascoCheck: { backgroundColor: '#85A89E', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
+ frascoMonedaCount: { position: 'absolute' as const, bottom: 4, alignSelf: 'center' as const },
+ frascoMonedaCountTxt: { fontSize: 14, fontWeight: '800' as const, color: '#fff' },
+ moneda: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#F3C57C', alignItems: 'center' as const, justifyContent: 'center' as const, elevation: 2 },
+ monedaPile: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 6, justifyContent: 'center' as const, marginVertical: 8 },
+ botonesAccion: { flexDirection: 'row' as const, gap: 10, marginTop: 12 },
+ btnAccion: { flex: 1, paddingVertical: 12, borderRadius: 20, alignItems: 'center' as const, backgroundColor: '#F4ACB7' },
+ btnAccionTxt: { fontSize: 13, fontWeight: '700' as const, color: '#fff' },
 });
