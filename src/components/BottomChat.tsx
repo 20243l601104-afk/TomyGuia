@@ -7,6 +7,27 @@ import { STT_API_KEY, STT_URL, GEMINI_API_KEY, GEMINI_API_URL } from '../constan
 import { IncomeAllocationModal } from './IncomeModal';
 import type { Allocation, FixedExpenseSeed } from '../types';
 
+// base64 decode compatible con Hermes/React Native (sin atob)
+function fromBase64(base64: string): Uint8Array {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const lookup = new Uint8Array(256);
+  for (let i = 0; i < chars.length; i++) lookup[chars.charCodeAt(i)] = i;
+  const clean = base64.replace(/[^A-Za-z0-9+/]/g, '');
+  const len = clean.length;
+  const bytes = new Uint8Array(Math.floor(len * 3 / 4));
+  let j = 0;
+  for (let i = 0; i < len; i += 4) {
+    const a = lookup[clean.charCodeAt(i)];
+    const b = lookup[clean.charCodeAt(i+1)];
+    const d = lookup[clean.charCodeAt(i+2)];
+    const e = lookup[clean.charCodeAt(i+3)];
+    bytes[j++] = (a << 2) | (b >> 4);
+    if (clean[i+2] !== '=') bytes[j++] = ((b & 15) << 4) | (d >> 2);
+    if (clean[i+3] !== '=') bytes[j++] = ((d & 3) << 6) | e;
+  }
+  return bytes.slice(0, j);
+}
+
 /* ─── Diccionario de números en letras ─── */
 const NUMEROS: Record<string, number> = {
   cero: 0, uno: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9,
@@ -238,12 +259,8 @@ export function BottomChat({ onIncomeAdded, onExpenseAdded, onBillPaid, fixedExp
         encoding: FileSystem.EncodingType.Base64,
       });
 
-      // Convertir base64 a Uint8Array compatible con React Native
-      const binaryStr = globalThis.atob ? globalThis.atob(base64) : Buffer.from(base64, 'base64').toString('binary');
-      const bytes = new Uint8Array(binaryStr.length);
-      for (let i = 0; i < binaryStr.length; i++) {
-        bytes[i] = binaryStr.charCodeAt(i);
-      }
+      // Convertir base64 a Uint8Array usando implementacion propia (sin atob)
+      const bytes = fromBase64(base64);
 
       const response = await fetch(
         'https://api.deepgram.com/v1/listen?language=es&model=nova-2&punctuate=true',
@@ -271,8 +288,8 @@ export function BottomChat({ onIncomeAdded, onExpenseAdded, onBillPaid, fixedExp
       } else {
         showFeedback('No se pudo transcribir');
       }
-    } catch (err) {
-      showFeedback('Error de transcripcion');
+    } catch (err: any) {
+      showFeedback('Error: ' + (err?.message || 'transcripcion fallida'));
     } finally {
       setIsTranscribing(false);
     }

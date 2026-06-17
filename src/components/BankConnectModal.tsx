@@ -59,7 +59,7 @@ export function BankConnectModal({ isOpen, onClose, onConnected }: Props) {
         body: JSON.stringify({
           id: BELVO_SECRET_ID,
           password: BELVO_SECRET_KEY,
-          scopes: 'read_institutions,write_links,read_accounts',
+          scopes: 'read_institutions,write_links',
         }),
       });
 
